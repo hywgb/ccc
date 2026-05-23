@@ -234,6 +234,21 @@ func main() {
 	asrHotwordsHandler := handler.NewASRHotwordsHandler(asrHotwordsSvc)
 	performanceHandler := handler.NewPerformanceHandler(performanceSvc)
 
+	// Phase 10 Repositories
+	annotationTaskRepo := infraMySQL.NewAnnotationTaskRepo(db)
+	annotationResultRepo := infraMySQL.NewAnnotationResultRepo(db)
+	llmModelConfigRepo := infraMySQL.NewLLMModelConfigRepo(db)
+	webrtcQualityRepo := infraMySQL.NewWebRTCQualityRepo(db)
+
+	// Phase 10 Domain Services
+	annotationSvc := ai.NewAnnotationService(annotationTaskRepo, annotationResultRepo)
+	llmGatewaySvc := ai.NewLLMGatewayService(llmModelConfigRepo)
+
+	// Phase 10 Handlers
+	annotationHandler := handler.NewAnnotationHandler(annotationSvc)
+	llmGatewayHandler := handler.NewLLMGatewayHandler(llmGatewaySvc)
+	webrtcQualityHandler := handler.NewWebRTCQualityHandler(webrtcQualityRepo)
+
 	// --- Router ---
 	router := httpRouter.NewRouter(httpRouter.RouterDeps{
 		TenantHandler:        tenantHandler,
@@ -280,6 +295,9 @@ func main() {
 		AIAnalysisHandler:      aiAnalysisHandler,
 		ASRHotwordsHandler:     asrHotwordsHandler,
 		PerformanceHandler:     performanceHandler,
+		AnnotationHandler:      annotationHandler,
+		LLMGatewayHandler:      llmGatewayHandler,
+		WebRTCQualityHandler:   webrtcQualityHandler,
 		RateLimiter:          rateLimiter,
 		AuditLogRepo:         auditLogRepo,
 		JWTSecret:            cfg.JWT.Secret,
