@@ -76,6 +76,11 @@ type RouterDeps struct {
 	ASRHotwordsHandler     *handler.ASRHotwordsHandler
 	PerformanceHandler     *handler.PerformanceHandler
 
+	// Phase 10
+	AnnotationHandler    *handler.AnnotationHandler
+	LLMGatewayHandler    *handler.LLMGatewayHandler
+	WebRTCQualityHandler *handler.WebRTCQualityHandler
+
 	// Infrastructure
 	RateLimiter  *redis.RateLimiter
 	AuditLogRepo platform.AuditLogRepository
@@ -495,6 +500,32 @@ func NewRouter(deps RouterDeps) *chi.Mux {
 			r.Get("/", deps.PerformanceHandler.List)
 			r.Post("/generate", deps.PerformanceHandler.Generate)
 		})
+
+		// --- Phase 10 Routes ---
+
+		r.Route("/annotation-tasks", func(r chi.Router) {
+			r.Post("/", deps.AnnotationHandler.CreateTask)
+			r.Get("/", deps.AnnotationHandler.ListTasks)
+			r.Get("/{id}", deps.AnnotationHandler.GetTask)
+			r.Post("/{id}/start", deps.AnnotationHandler.StartTask)
+			r.Post("/{id}/complete", deps.AnnotationHandler.CompleteTask)
+			r.Post("/{id}/cancel", deps.AnnotationHandler.CancelTask)
+			r.Post("/{id}/annotations", deps.AnnotationHandler.SubmitAnnotation)
+			r.Get("/{id}/annotations", deps.AnnotationHandler.ListResults)
+		})
+
+		r.Route("/llm-models", func(r chi.Router) {
+			r.Post("/", deps.LLMGatewayHandler.CreateConfig)
+			r.Get("/", deps.LLMGatewayHandler.ListConfigs)
+			r.Get("/default", deps.LLMGatewayHandler.GetDefault)
+			r.Get("/{id}", deps.LLMGatewayHandler.GetConfig)
+			r.Put("/{id}", deps.LLMGatewayHandler.UpdateConfig)
+			r.Delete("/{id}", deps.LLMGatewayHandler.DeleteConfig)
+		})
+
+		r.Post("/webrtc-quality", deps.WebRTCQualityHandler.Save)
+		r.Get("/calls/{callId}/webrtc-quality", deps.WebRTCQualityHandler.ListByCall)
+		r.Get("/agents/{agentId}/webrtc-quality", deps.WebRTCQualityHandler.ListByAgent)
 	})
 
 	// --- Public Routes (no JWT auth) ---
