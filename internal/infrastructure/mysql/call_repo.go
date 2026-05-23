@@ -55,13 +55,49 @@ func (r *CallRepo) Update(ctx context.Context, c *call.Call) error {
 }
 
 func (r *CallRepo) List(ctx context.Context, tenantID int64, offset, limit int) ([]*call.Call, int64, error) {
-	var total int64
-	_ = r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM calls WHERE tenant_id = ?", tenantID)
+	return r.ListWithFilter(ctx, tenantID, call.CallListFilter{}, offset, limit)
+}
 
+func (r *CallRepo) ListWithFilter(ctx context.Context, tenantID int64, filter call.CallListFilter, offset, limit int) ([]*call.Call, int64, error) {
+	where := "WHERE tenant_id = ?"
+	args := []interface{}{tenantID}
+
+	if filter.Direction != nil {
+		where += " AND direction = ?"
+		args = append(args, *filter.Direction)
+	}
+	if filter.CallType != nil {
+		where += " AND call_type = ?"
+		args = append(args, *filter.CallType)
+	}
+	if filter.Status != nil {
+		where += " AND status = ?"
+		args = append(args, *filter.Status)
+	}
+	if filter.Caller != "" {
+		where += " AND caller LIKE ?"
+		args = append(args, "%"+filter.Caller+"%")
+	}
+	if filter.Callee != "" {
+		where += " AND callee LIKE ?"
+		args = append(args, "%"+filter.Callee+"%")
+	}
+	if filter.StartFrom != nil {
+		where += " AND started_at >= ?"
+		args = append(args, *filter.StartFrom)
+	}
+	if filter.StartTo != nil {
+		where += " AND started_at <= ?"
+		args = append(args, *filter.StartTo)
+	}
+
+	var total int64
+	_ = r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM calls "+where, args...)
+
+	queryArgs := append(args, limit, offset)
 	var calls []*call.Call
 	err := r.db.SelectContext(ctx, &calls,
-		"SELECT * FROM calls WHERE tenant_id = ? ORDER BY started_at DESC LIMIT ? OFFSET ?",
-		tenantID, limit, offset)
+		"SELECT * FROM calls "+where+" ORDER BY started_at DESC LIMIT ? OFFSET ?", queryArgs...)
 	return calls, total, err
 }
 

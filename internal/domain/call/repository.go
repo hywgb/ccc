@@ -1,12 +1,26 @@
 package call
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+type CallListFilter struct {
+	Direction *CallDirection
+	CallType  *CallType
+	Status    *CallStatus
+	Caller    string
+	Callee    string
+	StartFrom *time.Time
+	StartTo   *time.Time
+}
 
 type CallRepository interface {
 	Create(ctx context.Context, c *Call) error
 	GetByID(ctx context.Context, id int64) (*Call, error)
 	Update(ctx context.Context, c *Call) error
 	List(ctx context.Context, tenantID int64, offset, limit int) ([]*Call, int64, error)
+	ListWithFilter(ctx context.Context, tenantID int64, filter CallListFilter, offset, limit int) ([]*Call, int64, error)
 }
 
 type CallEventRepository interface {
