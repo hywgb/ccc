@@ -82,6 +82,11 @@ func (s *CampaignService) GetByID(ctx context.Context, id int64) (*Campaign, err
 	return c, nil
 }
 
+func (s *CampaignService) Update(ctx context.Context, c *Campaign) error {
+	c.UpdatedAt = time.Now()
+	return s.campaigns.Update(ctx, c)
+}
+
 func (s *CampaignService) List(ctx context.Context, tenantID int64, offset, limit int) ([]*Campaign, int64, error) {
 	return s.campaigns.List(ctx, tenantID, offset, limit)
 }
@@ -187,6 +192,14 @@ func (s *CampaignService) ImportCases(ctx context.Context, campaignID int64, inp
 
 func (s *CampaignService) ListCases(ctx context.Context, campaignID int64, offset, limit int) ([]*CampaignCase, int64, error) {
 	return s.cases.ListByCampaign(ctx, campaignID, offset, limit)
+}
+
+func (s *CampaignService) GetCaseByID(ctx context.Context, caseID int64) (*CampaignCase, error) {
+	cs, err := s.cases.GetByID(ctx, caseID)
+	if err != nil || cs == nil {
+		return nil, ErrCaseNotFound
+	}
+	return cs, nil
 }
 
 func (s *CampaignService) GetNextCase(ctx context.Context, campaignID int64) (*CampaignCase, error) {

@@ -217,12 +217,20 @@ func (s *Service) dialPower(ctx context.Context, c *campaign.Campaign, state *di
 
 // PreviewAccept is called when an agent accepts a preview case and dials.
 func (s *Service) PreviewAccept(ctx context.Context, caseID int64) error {
-	cs, err := s.campaignSvc.GetNextCase(ctx, 0)
-	_ = cs
+	cs, err := s.campaignSvc.GetCaseByID(ctx, caseID)
 	if err != nil {
 		return err
 	}
-	s.logger.Info().Int64("case_id", caseID).Msg("preview: agent accepted case")
+
+	s.mu.Lock()
+	state, exists := s.active[cs.CampaignID]
+	if exists {
+		state.activeCalls++
+		state.totalDialed++
+	}
+	s.mu.Unlock()
+
+	s.logger.Info().Int64("case_id", caseID).Int64("campaign_id", cs.CampaignID).Msg("preview: agent accepted case, dialing")
 	return nil
 }
 

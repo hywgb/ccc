@@ -55,6 +55,13 @@ type RouterDeps struct {
 	B2BHandler        *handler.B2BHandler
 	TrunkGroupHandler *handler.TrunkGroupHandler
 
+	// Phase 7
+	CustomerHandler    *handler.CustomerHandler
+	TicketHandler      *handler.TicketHandler
+	KnowledgeHandler   *handler.KnowledgeHandler
+	AgentScriptHandler *handler.AgentScriptHandler
+	SessionInfoHandler *handler.SessionInfoHandler
+
 	// Infrastructure
 	RateLimiter  *redis.RateLimiter
 	AuditLogRepo platform.AuditLogRepository
@@ -324,6 +331,71 @@ func NewRouter(deps RouterDeps) *chi.Mux {
 			r.Get("/", deps.TrunkGroupHandler.List)
 			r.Post("/{id}/members", deps.TrunkGroupHandler.AddMember)
 			r.Get("/{id}/members", deps.TrunkGroupHandler.ListMembers)
+		})
+
+		// --- Phase 7 Routes ---
+
+		r.Route("/customers", func(r chi.Router) {
+			r.Post("/", deps.CustomerHandler.Create)
+			r.Get("/", deps.CustomerHandler.List)
+			r.Get("/{id}", deps.CustomerHandler.GetByID)
+			r.Put("/{id}", deps.CustomerHandler.Update)
+			r.Delete("/{id}", deps.CustomerHandler.Delete)
+			r.Post("/import", deps.CustomerHandler.Import)
+			r.Get("/by-phone/{phone}", deps.CustomerHandler.FindByPhone)
+			r.Get("/{id}/interactions", deps.CustomerHandler.ListInteractions)
+		})
+
+		r.Route("/custom-fields", func(r chi.Router) {
+			r.Post("/", deps.CustomerHandler.CreateFieldDefinition)
+			r.Get("/", deps.CustomerHandler.ListFieldDefinitions)
+		})
+
+		r.Route("/ticket-categories", func(r chi.Router) {
+			r.Post("/", deps.TicketHandler.CreateCategory)
+			r.Get("/", deps.TicketHandler.ListCategories)
+		})
+
+		r.Route("/ticket-templates", func(r chi.Router) {
+			r.Post("/", deps.TicketHandler.CreateTemplate)
+			r.Get("/", deps.TicketHandler.ListTemplates)
+			r.Put("/{id}", deps.TicketHandler.UpdateTemplate)
+			r.Post("/{id}/publish", deps.TicketHandler.PublishTemplate)
+			r.Post("/{id}/offline", deps.TicketHandler.OfflineTemplate)
+		})
+
+		r.Route("/tickets", func(r chi.Router) {
+			r.Post("/", deps.TicketHandler.Create)
+			r.Get("/", deps.TicketHandler.ListTickets)
+			r.Get("/{id}", deps.TicketHandler.GetTicket)
+			r.Put("/{id}", deps.TicketHandler.UpdateTicket)
+			r.Post("/{id}/assign", deps.TicketHandler.AssignTicket)
+			r.Post("/{id}/comments", deps.TicketHandler.AddComment)
+		})
+
+		r.Route("/knowledge-categories", func(r chi.Router) {
+			r.Post("/", deps.KnowledgeHandler.CreateCategory)
+			r.Get("/", deps.KnowledgeHandler.ListCategories)
+		})
+
+		r.Route("/knowledge-articles", func(r chi.Router) {
+			r.Post("/", deps.KnowledgeHandler.CreateArticle)
+			r.Get("/", deps.KnowledgeHandler.ListArticles)
+			r.Get("/search", deps.KnowledgeHandler.Search)
+			r.Get("/{id}", deps.KnowledgeHandler.GetArticle)
+			r.Put("/{id}", deps.KnowledgeHandler.UpdateArticle)
+		})
+
+		r.Route("/agent-scripts", func(r chi.Router) {
+			r.Post("/", deps.AgentScriptHandler.Create)
+			r.Get("/", deps.AgentScriptHandler.List)
+			r.Put("/{id}", deps.AgentScriptHandler.Update)
+		})
+
+		r.Route("/session-info-templates", func(r chi.Router) {
+			r.Post("/", deps.SessionInfoHandler.Create)
+			r.Get("/", deps.SessionInfoHandler.List)
+			r.Put("/{id}", deps.SessionInfoHandler.Update)
 		})
 	})
 

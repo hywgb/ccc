@@ -5,15 +5,17 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/divord97/ccc/internal/domain/crm"
 	"github.com/divord97/ccc/internal/domain/integration"
 )
 
 type Service struct {
-	configs integration.ScreenPopConfigRepository
+	configs   integration.ScreenPopConfigRepository
+	customers *crm.CustomerService
 }
 
-func NewService(configs integration.ScreenPopConfigRepository) *Service {
-	return &Service{configs: configs}
+func NewService(configs integration.ScreenPopConfigRepository, customers *crm.CustomerService) *Service {
+	return &Service{configs: configs, customers: customers}
 }
 
 type CallInfo struct {
@@ -25,22 +27,56 @@ type CallInfo struct {
 	AgentUserID  *int64
 }
 
-// BuildURLs generates screen pop URLs by substituting call variables into templates.
-func (s *Service) BuildURLs(ctx context.Context, tenantID int64, info CallInfo) ([]string, error) {
+type ScreenPopData struct {
+	URLs         []string             `json:"urls"`
+	Customer     *crm.Customer        `json:"customer,omitempty"`
+	Phones       []*crm.CustomerPhone `json:"phones,omitempty"`
+	Interactions []*crm.CustomerInteraction `json:"interactions,omitempty"`
+}
+
+// BuildScreenPop generates screen pop data: URLs + customer match + history.
+func (s *Service) BuildScreenPop(ctx context.Context, tenantID int64, info CallInfo) (*ScreenPopData, error) {
+	data := &ScreenPopData{}
+
+	// Build URLs from templates
 	configs, _, err := s.configs.List(ctx, tenantID, 0, 5)
 	if err != nil {
 		return nil, err
 	}
-
-	var urls []string
 	for _, cfg := range configs {
 		if !cfg.IsActive {
 			continue
 		}
 		url := s.substitute(cfg.URLTemplate, info)
-		urls = append(urls, url)
+		data.URLs = append(data.URLs, url)
 	}
-	return urls, nil
+
+	// Match customer by phone number
+	if s.customers != nil {
+		phone := info.Caller
+		if info.Direction == "outbound" {
+			phone = info.Callee
+		}
+		customer, err := s.customers.FindByPhone(ctx, tenantID, phone)
+		if err == nil && customer != nil {
+			data.Customer = customer
+			phones, _ := s.customers.ListPhones(ctx, customer.ID)
+			data.Phones = phones
+			interactions, _ := s.customers.ListInteractions(ctx, customer.ID, 0, 10)
+			data.Interactions = interactions
+		}
+	}
+
+	return data, nil
+}
+
+// BuildURLs generates screen pop URLs (backward compatible).
+func (s *Service) BuildURLs(ctx context.Context, tenantID int64, info CallInfo) ([]string, error) {
+	data, err := s.BuildScreenPop(ctx, tenantID, info)
+	if err != nil {
+		return nil, err
+	}
+	return data.URLs, nil
 }
 
 func (s *Service) substitute(tmpl string, info CallInfo) string {

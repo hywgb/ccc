@@ -91,6 +91,10 @@ func (h *CampaignHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if in.Name != nil {
 		c.Name = *in.Name
 	}
+	if err := h.svc.Update(r.Context(), c); err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	response.JSON(w, http.StatusOK, c)
 }
 

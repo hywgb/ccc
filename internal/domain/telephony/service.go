@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/rand"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -154,6 +155,7 @@ func (s *CLIPolicyService) SelectCLI(ctx context.Context, tenantID int64, policy
 type TrunkHealthService struct {
 	trunks SIPTrunkRepository
 	groups SIPTrunkGroupRepository
+	mu     sync.RWMutex
 	health map[int64]*TrunkHealthStatus
 }
 
@@ -167,6 +169,8 @@ func NewTrunkHealthService(trunks SIPTrunkRepository, groups SIPTrunkGroupReposi
 
 // RecordHealthCheck updates trunk health after an OPTIONS keepalive result.
 func (s *TrunkHealthService) RecordHealthCheck(trunkID int64, success bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	h, ok := s.health[trunkID]
 	if !ok {
 		h = &TrunkHealthStatus{TrunkID: trunkID, Status: TrunkStatusActive}
@@ -185,13 +189,16 @@ func (s *TrunkHealthService) RecordHealthCheck(trunkID int64, success bool) {
 	}
 }
 
-// GetHealthStatus returns the current health status of a trunk.
+// GetHealthStatus returns a snapshot of the current health status of a trunk.
 func (s *TrunkHealthService) GetHealthStatus(trunkID int64) *TrunkHealthStatus {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	h, ok := s.health[trunkID]
 	if !ok {
 		return &TrunkHealthStatus{TrunkID: trunkID, Status: TrunkStatusActive}
 	}
-	return h
+	cp := *h
+	return &cp
 }
 
 // SelectHealthyTrunk picks the best available trunk from a group, skipping down trunks.
