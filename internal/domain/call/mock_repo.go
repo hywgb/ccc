@@ -35,13 +35,27 @@ func (r *MockCallRepo) Update(_ context.Context, c *Call) error {
 }
 
 func (r *MockCallRepo) List(_ context.Context, tenantID int64, offset, limit int) ([]*Call, int64, error) {
+	return r.ListWithFilter(nil, tenantID, CallListFilter{}, offset, limit)
+}
+
+func (r *MockCallRepo) ListWithFilter(_ context.Context, tenantID int64, filter CallListFilter, offset, limit int) ([]*Call, int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var filtered []*Call
 	for _, c := range r.calls {
-		if c.TenantID == tenantID {
-			filtered = append(filtered, c)
+		if c.TenantID != tenantID {
+			continue
 		}
+		if filter.Direction != nil && c.Direction != *filter.Direction {
+			continue
+		}
+		if filter.CallType != nil && c.CallType != *filter.CallType {
+			continue
+		}
+		if filter.Status != nil && c.Status != *filter.Status {
+			continue
+		}
+		filtered = append(filtered, c)
 	}
 	total := int64(len(filtered))
 	if offset >= len(filtered) {

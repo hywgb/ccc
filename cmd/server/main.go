@@ -5,9 +5,13 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/divord97/ccc/internal/application/outbound"
 	"github.com/divord97/ccc/internal/config"
+	"github.com/divord97/ccc/internal/domain/call"
 	"github.com/divord97/ccc/internal/domain/identity"
+	"github.com/divord97/ccc/internal/domain/integration"
 	"github.com/divord97/ccc/internal/domain/routing"
+	"github.com/divord97/ccc/internal/domain/telephony"
 	infraMySQL "github.com/divord97/ccc/internal/infrastructure/mysql"
 	infraRedis "github.com/divord97/ccc/internal/infrastructure/redis"
 	httpRouter "github.com/divord97/ccc/internal/interfaces/http"
@@ -54,12 +58,29 @@ func main() {
 	callNumberTagRepo := infraMySQL.NewCallNumberTagRepo(db)
 	autoTagRuleRepo := infraMySQL.NewAutoTagRuleRepo(db)
 
+	// --- Phase 2 Repositories ---
+	callRepo := infraMySQL.NewCallRepo(db)
+	callEventRepo := infraMySQL.NewCallEventRepo(db)
+	ivrTrackingRepo := infraMySQL.NewIVRTrackingRepo(db)
+	routingRuleRepo := infraMySQL.NewRoutingRuleRepo(db)
+	cliPolicyRepo := infraMySQL.NewCLIPolicyRepo(db)
+	dncRepo := infraMySQL.NewDNCRepo(db)
+	callTagRepo := infraMySQL.NewCallTagAssignmentRepo(db)
+
 	// --- Domain Services ---
 	tenantSvc := identity.NewTenantService(tenantRepo, tenantSettingsRepo)
 	userSvc := identity.NewUserService(userRepo, agentRepo)
 	agentSvc := identity.NewAgentService(agentRepo, userRepo, tenantSettingsRepo)
 	skillGroupSvc := identity.NewSkillGroupService(skillGroupRepo, skillGroupMemberRepo)
 	ivrFlowSvc := routing.NewIVRFlowService(ivrFlowRepo, ivrFlowVersionRepo)
+	callSvc := call.NewCallService(callRepo, callEventRepo, ivrTrackingRepo)
+	routingSvc := telephony.NewRoutingService(routingRuleRepo)
+	cliSvc := telephony.NewCLIPolicyService(cliPolicyRepo, phoneNumberRepo)
+	dncSvc := integration.NewDNCService(dncRepo)
+	callTagSvc := integration.NewCallTagService(callTagRepo)
+
+	// --- Application Services ---
+	outboundSvc := outbound.NewService(callSvc, routingSvc, cliSvc, dncSvc, nil)
 
 	// --- Infrastructure ---
 	rateLimiter := infraRedis.NewRateLimiter(redisClient)
@@ -77,6 +98,10 @@ func main() {
 	voicemailHandler := handler.NewVoicemailHandler(voicemailRepo)
 	callNumberTagHandler := handler.NewCallNumberTagHandler(callNumberTagRepo)
 	autoTagRuleHandler := handler.NewAutoTagRuleHandler(autoTagRuleRepo)
+	routingRuleHandler := handler.NewRoutingRuleHandler(routingRuleRepo)
+	cliPolicyHandler := handler.NewCLIPolicyHandler(cliPolicyRepo)
+	dncHandler := handler.NewDNCHandler(dncSvc, dncRepo)
+	callHandler := handler.NewCallHandler(callSvc, outboundSvc, callTagSvc)
 
 	// --- Router ---
 	router := httpRouter.NewRouter(httpRouter.RouterDeps{
@@ -92,6 +117,10 @@ func main() {
 		VoicemailHandler:     voicemailHandler,
 		CallNumberTagHandler: callNumberTagHandler,
 		AutoTagRuleHandler:   autoTagRuleHandler,
+		RoutingRuleHandler:   routingRuleHandler,
+		CLIPolicyHandler:     cliPolicyHandler,
+		DNCHandler:           dncHandler,
+		CallHandler:          callHandler,
 		RateLimiter:          rateLimiter,
 		AuditLogRepo:         auditLogRepo,
 		JWTSecret:            cfg.JWT.Secret,

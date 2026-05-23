@@ -1,6 +1,45 @@
 package telephony
 
-import "time"
+import (
+	"time"
+)
+
+// RoutingRule matches outbound calls to SIP trunks based on prefix/time/priority.
+type RoutingRule struct {
+	ID          int64     `db:"id" json:"id"`
+	TenantID    int64     `db:"tenant_id" json:"tenant_id"`
+	Name        string    `db:"name" json:"name"`
+	MatchType   string    `db:"match_type" json:"match_type"`     // prefix, regex, time_of_day
+	MatchValue  string    `db:"match_value" json:"match_value"`   // e.g. "+86" or "09:00-18:00"
+	SIPTrunkID  int64     `db:"sip_trunk_id" json:"sip_trunk_id"`
+	Priority    int       `db:"priority" json:"priority"`
+	IsActive    bool      `db:"is_active" json:"is_active"`
+	CreatedAt   time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at" json:"updated_at"`
+}
+
+// CLIStrategy defines how outbound caller ID is selected.
+type CLIStrategy string
+
+const (
+	CLIStrategyFixed      CLIStrategy = "fixed"       // always use a specific number
+	CLIStrategyRoundRobin CLIStrategy = "round_robin"  // rotate through numbers
+	CLIStrategyRandom     CLIStrategy = "random"       // random selection
+	CLIStrategyMatchArea  CLIStrategy = "match_area"   // match callee area code
+)
+
+// CLIPolicy defines caller ID selection rules for outbound calls.
+type CLIPolicy struct {
+	ID            int64       `db:"id" json:"id"`
+	TenantID      int64       `db:"tenant_id" json:"tenant_id"`
+	Name          string      `db:"name" json:"name"`
+	Strategy      CLIStrategy `db:"strategy" json:"strategy"`
+	FixedNumberID *int64      `db:"fixed_number_id" json:"fixed_number_id,omitempty"`
+	NumberPoolIDs string      `db:"number_pool_ids" json:"number_pool_ids"` // comma-separated phone_number IDs
+	IsDefault     bool        `db:"is_default" json:"is_default"`
+	CreatedAt     time.Time   `db:"created_at" json:"created_at"`
+	UpdatedAt     time.Time   `db:"updated_at" json:"updated_at"`
+}
 
 type Carrier struct {
 	ID          int64     `db:"id" json:"id"`

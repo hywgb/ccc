@@ -28,6 +28,12 @@ type RouterDeps struct {
 	CallNumberTagHandler *handler.CallNumberTagHandler
 	AutoTagRuleHandler   *handler.AutoTagRuleHandler
 
+	// Phase 2
+	RoutingRuleHandler *handler.RoutingRuleHandler
+	CLIPolicyHandler   *handler.CLIPolicyHandler
+	DNCHandler         *handler.DNCHandler
+	CallHandler        *handler.CallHandler
+
 	// Infrastructure
 	RateLimiter  *redis.RateLimiter
 	AuditLogRepo platform.AuditLogRepository
@@ -140,6 +146,39 @@ func NewRouter(deps RouterDeps) *chi.Mux {
 			r.Get("/{id}", deps.VoicemailHandler.Get)
 			r.Patch("/{id}/read", deps.VoicemailHandler.MarkRead)
 			r.Delete("/{id}", deps.VoicemailHandler.Delete)
+		})
+
+		// --- Phase 2 Routes ---
+
+		r.Route("/routing-rules", func(r chi.Router) {
+			r.Post("/", deps.RoutingRuleHandler.Create)
+			r.Get("/", deps.RoutingRuleHandler.List)
+			r.Put("/{id}", deps.RoutingRuleHandler.Update)
+			r.Delete("/{id}", deps.RoutingRuleHandler.Delete)
+		})
+
+		r.Route("/cli-policies", func(r chi.Router) {
+			r.Post("/", deps.CLIPolicyHandler.Create)
+			r.Get("/", deps.CLIPolicyHandler.List)
+			r.Put("/{id}", deps.CLIPolicyHandler.Update)
+		})
+
+		r.Route("/dnc-list", func(r chi.Router) {
+			r.Post("/", deps.DNCHandler.Create)
+			r.Get("/", deps.DNCHandler.List)
+			r.Delete("/{id}", deps.DNCHandler.Delete)
+			r.Post("/check", deps.DNCHandler.Check)
+		})
+
+		r.Route("/calls", func(r chi.Router) {
+			r.Get("/", deps.CallHandler.List)
+			r.Get("/{id}", deps.CallHandler.Get)
+			r.Get("/{id}/events", deps.CallHandler.GetEvents)
+			r.Get("/{id}/ivr-tracking", deps.CallHandler.GetIVRTracking)
+			r.Post("/dial", deps.CallHandler.Dial)
+			r.Post("/internal-dial", deps.CallHandler.InternalDial)
+			r.Post("/{id}/tags", deps.CallHandler.AddTag)
+			r.Delete("/{id}/tags/{tagId}", deps.CallHandler.RemoveTag)
 		})
 	})
 

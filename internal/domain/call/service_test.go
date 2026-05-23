@@ -142,3 +142,72 @@ func TestCallService_CalculateDurations(t *testing.T) {
 	assert.Equal(t, 10, c.QueueDurationSec)
 	assert.Equal(t, 5, c.RingDurationSec)
 }
+
+func TestCallService_CreateOutboundCall(t *testing.T) {
+	svc := NewCallService(NewMockCallRepo(), NewMockCallEventRepo(), NewMockIVRTrackingRepo())
+	ctx := context.Background()
+
+	agentID := int64(50)
+	c, err := svc.CreateOutboundCall(ctx, CreateCallInput{
+		TenantID:    1,
+		Caller:      "+862188880001",
+		Callee:      "+8613900139000",
+		AgentUserID: &agentID,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, DirectionOutbound, c.Direction)
+	assert.Equal(t, CallTypeNormal, c.CallType)
+	assert.Equal(t, CallStatusRinging, c.Status)
+	assert.Equal(t, &agentID, c.AgentUserID)
+}
+
+func TestCallService_CreateOutboundCall_MissingCallee(t *testing.T) {
+	svc := NewCallService(NewMockCallRepo(), NewMockCallEventRepo(), NewMockIVRTrackingRepo())
+
+	_, err := svc.CreateOutboundCall(context.Background(), CreateCallInput{
+		TenantID: 1, Caller: "+86021",
+	})
+	assert.ErrorIs(t, err, ErrMissingCallee)
+}
+
+func TestCallService_CreateInternalCall(t *testing.T) {
+	svc := NewCallService(NewMockCallRepo(), NewMockCallEventRepo(), NewMockIVRTrackingRepo())
+	ctx := context.Background()
+
+	c, err := svc.CreateInternalCall(ctx, CreateCallInput{
+		TenantID: 1,
+		Caller:   "agent_001",
+		Callee:   "agent_002",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, DirectionOutbound, c.Direction)
+	assert.Equal(t, CallTypeInternal, c.CallType)
+	assert.Equal(t, CallStatusRinging, c.Status)
+}
+
+func TestCallService_ListCalls_Filter(t *testing.T) {
+	repo := NewMockCallRepo()
+	svc := NewCallService(repo, NewMockCallEventRepo(), NewMockIVRTrackingRepo())
+	ctx := context.Background()
+
+	_, _ = svc.CreateInboundCall(ctx, CreateCallInput{TenantID: 1, Caller: "a", Callee: "b"})
+	_, _ = svc.CreateOutboundCall(ctx, CreateCallInput{TenantID: 1, Caller: "c", Callee: "d"})
+	_, _ = svc.CreateInternalCall(ctx, CreateCallInput{TenantID: 1, Caller: "e", Callee: "f"})
+
+	// Filter outbound only
+	dir := DirectionOutbound
+	calls, total, err := svc.ListCalls(ctx, 1, CallListFilter{Direction: &dir}, 0, 10)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total) // outbound + internal (both are outbound direction)
+	assert.Len(t, calls, 2)
+
+	// Filter internal call type
+	ct := CallTypeInternal
+	calls, total, err = svc.ListCalls(ctx, 1, CallListFilter{CallType: &ct}, 0, 10)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	assert.Len(t, calls, 1)
+	assert.Equal(t, CallTypeInternal, calls[0].CallType)
+}

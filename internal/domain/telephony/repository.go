@@ -2,6 +2,23 @@ package telephony
 
 import "context"
 
+type RoutingRuleRepository interface {
+	Create(ctx context.Context, r *RoutingRule) error
+	GetByID(ctx context.Context, id int64) (*RoutingRule, error)
+	Update(ctx context.Context, r *RoutingRule) error
+	ListActive(ctx context.Context, tenantID int64) ([]*RoutingRule, error)
+	List(ctx context.Context, tenantID int64, offset, limit int) ([]*RoutingRule, int64, error)
+	Delete(ctx context.Context, id int64) error
+}
+
+type CLIPolicyRepository interface {
+	Create(ctx context.Context, p *CLIPolicy) error
+	GetByID(ctx context.Context, id int64) (*CLIPolicy, error)
+	GetDefault(ctx context.Context, tenantID int64) (*CLIPolicy, error)
+	Update(ctx context.Context, p *CLIPolicy) error
+	List(ctx context.Context, tenantID int64, offset, limit int) ([]*CLIPolicy, int64, error)
+}
+
 type CarrierRepository interface {
 	Create(ctx context.Context, c *Carrier) error
 	GetByID(ctx context.Context, id int64) (*Carrier, error)

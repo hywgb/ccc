@@ -23,6 +23,7 @@ type CreateCallInput struct {
 	CallType      CallType
 	Caller        string
 	Callee        string
+	AgentUserID   *int64
 	IVRFlowID     *int64
 	PhoneNumberID *int64
 	CarrierID     *int64
@@ -108,8 +109,99 @@ func (s *CallService) EndCall(ctx context.Context, id int64, reason HangupReason
 	return c, nil
 }
 
+// CreateOutboundCall creates an outbound call record.
+func (s *CallService) CreateOutboundCall(ctx context.Context, in CreateCallInput) (*Call, error) {
+	if in.Callee == "" {
+		return nil, ErrMissingCallee
+	}
+	if in.Caller == "" {
+		return nil, ErrMissingCaller
+	}
+	in.Direction = DirectionOutbound
+	if in.CallType == "" {
+		in.CallType = CallTypeNormal
+	}
+
+	now := time.Now()
+	c := &Call{
+		ID:            snowflake.NextID(),
+		TenantID:      in.TenantID,
+		Direction:     in.Direction,
+		CallType:      in.CallType,
+		MediaType:     MediaTypeAudio,
+		Caller:        in.Caller,
+		Callee:        in.Callee,
+		AgentUserID:   in.AgentUserID,
+		PhoneNumberID: in.PhoneNumberID,
+		CarrierID:     in.CarrierID,
+		Status:        CallStatusRinging,
+		StartedAt:     now,
+	}
+
+	if err := s.calls.Create(ctx, c); err != nil {
+		return nil, err
+	}
+
+	_ = s.events.Create(ctx, &CallEvent{
+		ID:        snowflake.NextID(),
+		CallID:    c.ID,
+		TenantID:  c.TenantID,
+		Event:     "call_created",
+		Detail:    string(c.Direction),
+		CreatedAt: now,
+	})
+
+	return c, nil
+}
+
+// CreateInternalCall creates an internal (agent-to-agent) call record.
+func (s *CallService) CreateInternalCall(ctx context.Context, in CreateCallInput) (*Call, error) {
+	if in.Callee == "" {
+		return nil, ErrMissingCallee
+	}
+	if in.Caller == "" {
+		return nil, ErrMissingCaller
+	}
+	in.Direction = DirectionOutbound
+	in.CallType = CallTypeInternal
+
+	now := time.Now()
+	c := &Call{
+		ID:          snowflake.NextID(),
+		TenantID:    in.TenantID,
+		Direction:   in.Direction,
+		CallType:    in.CallType,
+		MediaType:   MediaTypeAudio,
+		Caller:      in.Caller,
+		Callee:      in.Callee,
+		AgentUserID: in.AgentUserID,
+		Status:      CallStatusRinging,
+		StartedAt:   now,
+	}
+
+	if err := s.calls.Create(ctx, c); err != nil {
+		return nil, err
+	}
+
+	_ = s.events.Create(ctx, &CallEvent{
+		ID:        snowflake.NextID(),
+		CallID:    c.ID,
+		TenantID:  c.TenantID,
+		Event:     "call_created",
+		Detail:    "INTERNAL",
+		CreatedAt: now,
+	})
+
+	return c, nil
+}
+
 func (s *CallService) GetByID(ctx context.Context, id int64) (*Call, error) {
 	return s.calls.GetByID(ctx, id)
+}
+
+// ListCalls returns calls with optional filtering.
+func (s *CallService) ListCalls(ctx context.Context, tenantID int64, filter CallListFilter, offset, limit int) ([]*Call, int64, error) {
+	return s.calls.ListWithFilter(ctx, tenantID, filter, offset, limit)
 }
 
 func (s *CallService) GetIVRTracking(ctx context.Context, callID int64) ([]*IVRTracking, error) {
