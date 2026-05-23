@@ -2,8 +2,6 @@ package aianalysis
 
 import (
 	"context"
-	"encoding/json"
-
 	"github.com/divord97/ccc/internal/infrastructure/llm"
 	"github.com/rs/zerolog"
 )
@@ -207,8 +205,6 @@ type HotwordEntry struct {
 func (s *Service) AnalyzeHotwords(_ context.Context, transcripts []string) (*HotwordAnalysisResult, error) {
 	freq := make(map[string]int)
 	for _, t := range transcripts {
-		tags, _ := json.Marshal(t)
-		_ = tags
 		words := splitWords(t)
 		for _, w := range words {
 			if len(w) >= 2 {
