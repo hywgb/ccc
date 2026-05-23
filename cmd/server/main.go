@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/divord97/ccc/internal/application/aianalysis"
 	"github.com/divord97/ccc/internal/application/b2b"
 	"github.com/divord97/ccc/internal/application/csat"
 	"github.com/divord97/ccc/internal/application/dialer"
@@ -166,6 +167,22 @@ func main() {
 	llmProvider := llm.NewStubProvider()
 	imAssistSvc := imassist.NewService(llmProvider, logger)
 
+	// --- Phase 9 Repositories ---
+	digitalEmployeeRepo := infraMySQL.NewDigitalEmployeeRepo(db)
+	digitalEmployeeSceneRepo := infraMySQL.NewDigitalEmployeeSceneRepo(db)
+	qaRuleRepo := infraMySQL.NewQARuleRepo(db)
+	qaSchemeRepo := infraMySQL.NewQASchemeRepo(db)
+	qaResultRepo := infraMySQL.NewQAResultRepo(db)
+	asrHotwordsRepo := infraMySQL.NewASRHotwordsRepo(db)
+	performanceScorecardRepo := infraMySQL.NewPerformanceScorecardRepo(db)
+
+	// --- Phase 9 Domain Services ---
+	digitalEmployeeSvc := ai.NewDigitalEmployeeService(digitalEmployeeRepo, digitalEmployeeSceneRepo)
+	qiSvc := ai.NewQualityInspectionService(qaRuleRepo, qaSchemeRepo, qaResultRepo)
+	asrHotwordsSvc := ai.NewASRHotwordsService(asrHotwordsRepo)
+	performanceSvc := ai.NewPerformanceScorecardService(performanceScorecardRepo)
+	aiAnalysisSvc := aianalysis.NewService(llmProvider, logger)
+
 	// --- Infrastructure ---
 	rateLimiter := infraRedis.NewRateLimiter(redisClient)
 
@@ -210,6 +227,13 @@ func main() {
 	emailInboundHandler := handler.NewEmailInboundHandler(emailSvc)
 	imAssistHandler := handler.NewIMAssistHandler(imAssistSvc)
 
+	// Phase 9
+	digitalEmployeeHandler := handler.NewDigitalEmployeeHandler(digitalEmployeeSvc)
+	qaHandler := handler.NewQAHandler(qiSvc)
+	aiAnalysisHandler := handler.NewAIAnalysisHandler(aiAnalysisSvc)
+	asrHotwordsHandler := handler.NewASRHotwordsHandler(asrHotwordsSvc)
+	performanceHandler := handler.NewPerformanceHandler(performanceSvc)
+
 	// --- Router ---
 	router := httpRouter.NewRouter(httpRouter.RouterDeps{
 		TenantHandler:        tenantHandler,
@@ -251,6 +275,11 @@ func main() {
 		WidgetHandler:        widgetHandler,
 		EmailInboundHandler:  emailInboundHandler,
 		IMAssistHandler:      imAssistHandler,
+		DigitalEmployeeHandler: digitalEmployeeHandler,
+		QAHandler:              qaHandler,
+		AIAnalysisHandler:      aiAnalysisHandler,
+		ASRHotwordsHandler:     asrHotwordsHandler,
+		PerformanceHandler:     performanceHandler,
 		RateLimiter:          rateLimiter,
 		AuditLogRepo:         auditLogRepo,
 		JWTSecret:            cfg.JWT.Secret,

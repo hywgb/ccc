@@ -69,6 +69,13 @@ type RouterDeps struct {
 	EmailInboundHandler *handler.EmailInboundHandler
 	IMAssistHandler     *handler.IMAssistHandler
 
+	// Phase 9
+	DigitalEmployeeHandler *handler.DigitalEmployeeHandler
+	QAHandler              *handler.QAHandler
+	AIAnalysisHandler      *handler.AIAnalysisHandler
+	ASRHotwordsHandler     *handler.ASRHotwordsHandler
+	PerformanceHandler     *handler.PerformanceHandler
+
 	// Infrastructure
 	RateLimiter  *redis.RateLimiter
 	AuditLogRepo platform.AuditLogRepository
@@ -424,6 +431,69 @@ func NewRouter(deps RouterDeps) *chi.Mux {
 			r.Post("/correct", deps.IMAssistHandler.Correct)
 			r.Post("/expand", deps.IMAssistHandler.Expand)
 			r.Post("/optimize", deps.IMAssistHandler.Optimize)
+		})
+
+		// --- Phase 9 Routes ---
+
+		r.Route("/digital-employees", func(r chi.Router) {
+			r.Post("/", deps.DigitalEmployeeHandler.Create)
+			r.Get("/", deps.DigitalEmployeeHandler.List)
+			r.Get("/{id}", deps.DigitalEmployeeHandler.Get)
+			r.Put("/{id}", deps.DigitalEmployeeHandler.Update)
+			r.Post("/{id}/scenes", deps.DigitalEmployeeHandler.CreateScene)
+			r.Get("/{id}/scenes", deps.DigitalEmployeeHandler.ListScenes)
+			r.Post("/{id}/scenes/{sceneId}/publish", deps.DigitalEmployeeHandler.PublishScene)
+			r.Post("/{id}/scenes/{sceneId}/test", deps.DigitalEmployeeHandler.TestIntent)
+		})
+
+		r.Route("/qa/rules", func(r chi.Router) {
+			r.Post("/", deps.QAHandler.CreateRule)
+			r.Get("/", deps.QAHandler.ListRules)
+			r.Get("/{id}", deps.QAHandler.GetRule)
+			r.Put("/{id}", deps.QAHandler.UpdateRule)
+			r.Delete("/{id}", deps.QAHandler.DeleteRule)
+		})
+
+		r.Route("/qa/schemes", func(r chi.Router) {
+			r.Post("/", deps.QAHandler.CreateScheme)
+			r.Get("/", deps.QAHandler.ListSchemes)
+			r.Get("/{id}", deps.QAHandler.GetScheme)
+			r.Put("/{id}", deps.QAHandler.UpdateScheme)
+			r.Delete("/{id}", deps.QAHandler.DeleteScheme)
+		})
+
+		r.Route("/qa", func(r chi.Router) {
+			r.Post("/run", deps.QAHandler.RunInspection)
+			r.Get("/results", deps.QAHandler.ListResults)
+			r.Get("/results/{id}", deps.QAHandler.GetResult)
+			r.Post("/results/{id}/appeal", deps.QAHandler.Appeal)
+			r.Post("/results/{id}/review", deps.QAHandler.Review)
+		})
+
+		// AI call analysis endpoints
+		r.Post("/calls/{callId}/ai-summary", deps.AIAnalysisHandler.Summary)
+		r.Post("/calls/{callId}/ai-sentiment", deps.AIAnalysisHandler.Sentiment)
+		r.Post("/calls/{callId}/ai-tags", deps.AIAnalysisHandler.Tags)
+		r.Post("/calls/{callId}/ai-satisfaction", deps.AIAnalysisHandler.Satisfaction)
+		r.Post("/calls/{callId}/ai-ivr-analysis", deps.AIAnalysisHandler.IVRAnalysis)
+		r.Post("/calls/{callId}/ai-completion", deps.AIAnalysisHandler.Completion)
+		r.Post("/calls/{callId}/ai-post-actions", deps.AIAnalysisHandler.PostCallActions)
+		r.Post("/calls/{callId}/auto-fill-ticket", deps.AIAnalysisHandler.AutoFill)
+		r.Post("/calls/{callId}/script-recommendations", deps.AIAnalysisHandler.ScriptRecommend)
+		r.Post("/session-tag-analysis", deps.AIAnalysisHandler.BatchTags)
+		r.Post("/hotword-analysis", deps.AIAnalysisHandler.HotwordAnalysis)
+
+		r.Route("/asr-hotwords", func(r chi.Router) {
+			r.Post("/", deps.ASRHotwordsHandler.Create)
+			r.Get("/", deps.ASRHotwordsHandler.List)
+			r.Get("/{id}", deps.ASRHotwordsHandler.Get)
+			r.Put("/{id}", deps.ASRHotwordsHandler.Update)
+			r.Delete("/{id}", deps.ASRHotwordsHandler.Delete)
+		})
+
+		r.Route("/performance-scorecards", func(r chi.Router) {
+			r.Get("/", deps.PerformanceHandler.List)
+			r.Post("/generate", deps.PerformanceHandler.Generate)
 		})
 	})
 
