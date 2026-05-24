@@ -31,6 +31,7 @@ type SIPTrunkRepository interface {
 	GetByID(ctx context.Context, id int64) (*SIPTrunk, error)
 	Update(ctx context.Context, t *SIPTrunk) error
 	List(ctx context.Context, tenantID int64, offset, limit int) ([]*SIPTrunk, int64, error)
+	ListAll(ctx context.Context, offset, limit int) ([]*SIPTrunk, int64, error)
 }
 
 type PhoneNumberRepository interface {

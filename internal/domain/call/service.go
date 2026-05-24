@@ -256,6 +256,56 @@ func (s *CallService) CreateInternalCall(ctx context.Context, in CreateCallInput
 	return c, nil
 }
 
+// TransitionToQueue moves a call from IVR to Queue status.
+func (s *CallService) TransitionToQueue(ctx context.Context, id int64, skillGroupID int64) (*Call, error) {
+	c, err := s.calls.GetByID(ctx, id)
+	if err != nil || c == nil {
+		return nil, ErrCallNotFound
+	}
+	if c.Status != CallStatusIVR {
+		return nil, ErrCallNotActive
+	}
+
+	now := time.Now()
+	c.Status = CallStatusQueue
+	c.SkillGroupID = &skillGroupID
+
+	if err := s.calls.Update(ctx, c); err != nil {
+		return nil, err
+	}
+
+	_ = s.events.Create(ctx, &CallEvent{
+		ID: snowflake.NextID(), CallID: c.ID, TenantID: c.TenantID,
+		Event: "queue_entered", Detail: fmt.Sprintf("skill_group_%d", skillGroupID), CreatedAt: now,
+	})
+	return c, nil
+}
+
+// TransitionToRinging moves a call from Queue (or IVR) to Ringing status.
+func (s *CallService) TransitionToRinging(ctx context.Context, id int64, agentUserID int64) (*Call, error) {
+	c, err := s.calls.GetByID(ctx, id)
+	if err != nil || c == nil {
+		return nil, ErrCallNotFound
+	}
+	if c.Status != CallStatusQueue && c.Status != CallStatusIVR {
+		return nil, ErrCallNotActive
+	}
+
+	now := time.Now()
+	c.Status = CallStatusRinging
+	c.AgentUserID = &agentUserID
+
+	if err := s.calls.Update(ctx, c); err != nil {
+		return nil, err
+	}
+
+	_ = s.events.Create(ctx, &CallEvent{
+		ID: snowflake.NextID(), CallID: c.ID, TenantID: c.TenantID,
+		Event: "agent_ringing", Detail: fmt.Sprintf("agent_%d", agentUserID), CreatedAt: now,
+	})
+	return c, nil
+}
+
 // AnswerCall marks a call as answered by an agent.
 func (s *CallService) AnswerCall(ctx context.Context, id int64, agentUserID int64) (*Call, error) {
 	c, err := s.calls.GetByID(ctx, id)
@@ -668,6 +718,16 @@ func (s *CallService) WhisperPreConnect(ctx context.Context, callID int64, messa
 		Event: "whisper_pre_connect", Detail: message, CreatedAt: time.Now(),
 	})
 	return nil
+}
+
+// ListEvents returns all events for a call.
+func (s *CallService) ListEvents(ctx context.Context, callID int64) ([]*CallEvent, error) {
+	return s.events.ListByCallID(ctx, callID)
+}
+
+// UpdateDurations persists computed IVR/queue/ring durations back to the call record.
+func (s *CallService) UpdateDurations(ctx context.Context, c *Call) error {
+	return s.calls.Update(ctx, c)
 }
 
 // CalculateDurations computes IVR/ring/queue/wait durations from call events.

@@ -98,6 +98,17 @@ func (r *SIPTrunkRepo) List(ctx context.Context, tenantID int64, offset, limit i
 	return trunks, total, err
 }
 
+func (r *SIPTrunkRepo) ListAll(ctx context.Context, offset, limit int) ([]*telephony.SIPTrunk, int64, error) {
+	var total int64
+	_ = r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM sip_trunks")
+
+	var trunks []*telephony.SIPTrunk
+	err := r.db.SelectContext(ctx, &trunks,
+		"SELECT * FROM sip_trunks ORDER BY created_at DESC LIMIT ? OFFSET ?",
+		limit, offset)
+	return trunks, total, err
+}
+
 // PhoneNumberRepo
 
 type PhoneNumberRepo struct {

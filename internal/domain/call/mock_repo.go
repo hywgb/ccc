@@ -167,3 +167,15 @@ func (r *MockCallbackRepo) ListPending(_ context.Context, tenantID int64) ([]*Ca
 	}
 	return result, nil
 }
+
+func (r *MockCallbackRepo) ListAllPending(_ context.Context) ([]*CallbackRequest, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []*CallbackRequest
+	for _, cb := range r.data {
+		if cb.Status == "pending" || cb.Status == "retry" {
+			result = append(result, cb)
+		}
+	}
+	return result, nil
+}
