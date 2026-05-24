@@ -53,3 +53,23 @@ func (h *B2BHandler) FlashSMS(w http.ResponseWriter, r *http.Request) {
 	}
 	response.JSON(w, http.StatusOK, map[string]string{"status": "sent"})
 }
+
+func (h *B2BHandler) EncryptedCall(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		TenantID           int64  `json:"tenant_id"`
+		CallerNumber       string `json:"caller_number"`
+		CalleeNumber       string `json:"callee_number"`
+		IntermediateNumber string `json:"intermediate_number"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	c, err := h.svc.EncryptedCall(r.Context(), in.TenantID, in.CallerNumber, in.CalleeNumber, in.IntermediateNumber)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.JSON(w, http.StatusCreated, c)
+}

@@ -246,7 +246,13 @@ func (s *Service) dialPower(ctx context.Context, c *campaign.Campaign, state *di
 func (s *Service) dialCase(ctx context.Context, c *campaign.Campaign, cs *campaign.CampaignCase, state *dialerState) {
 	err := s.dialFn(ctx, c.TenantID, cs.PhoneNumber, c.ID, cs.ID)
 	connected := err == nil
-	s.RecordCallResult(ctx, c.ID, cs.ID, connected, 0, "")
+	disposition := ""
+	if connected {
+		disposition = "connected"
+	} else if err != nil {
+		disposition = "dial_failed"
+	}
+	s.RecordCallResult(ctx, c.ID, cs.ID, connected, 0, disposition)
 }
 
 // PreviewAccept is called when an agent accepts a preview case and dials.
@@ -255,6 +261,8 @@ func (s *Service) PreviewAccept(ctx context.Context, caseID int64) error {
 	if err != nil {
 		return err
 	}
+
+	c, _ := s.campaignSvc.GetByID(ctx, cs.CampaignID)
 
 	s.mu.Lock()
 	state, exists := s.active[cs.CampaignID]
@@ -265,6 +273,12 @@ func (s *Service) PreviewAccept(ctx context.Context, caseID int64) error {
 	s.mu.Unlock()
 
 	s.logger.Info().Int64("case_id", caseID).Int64("campaign_id", cs.CampaignID).Msg("preview: agent accepted case, dialing")
+
+	tenantID := cs.TenantID
+	if c != nil {
+		tenantID = c.TenantID
+	}
+	go s.dialCase(ctx, &campaign.Campaign{ID: cs.CampaignID, TenantID: tenantID}, cs, state)
 	return nil
 }
 

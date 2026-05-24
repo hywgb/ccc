@@ -425,6 +425,7 @@ func NewRouter(deps RouterDeps) *chi.Mux {
 		r.Post("/campaigns/{campaignId}/cases/{caseId}/skip", deps.PreviewCaseHandler.SkipCase)
 
 		r.Post("/calls/back2back", deps.B2BHandler.Back2BackCall)
+		r.Post("/calls/encrypted", deps.B2BHandler.EncryptedCall)
 		r.Post("/flash-sms", deps.B2BHandler.FlashSMS)
 
 		r.Route("/sip-trunk-groups", func(r chi.Router) {

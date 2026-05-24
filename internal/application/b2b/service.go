@@ -47,12 +47,25 @@ func (s *Service) Back2BackCall(ctx context.Context, tenantID int64, callerNumbe
 		Event: "b2b_initiated", Detail: callerNumber + "->" + calleeNumber, CreatedAt: now,
 	})
 
+	// Originate B2B call via ESL
+	if s.esl != nil && gateway != "" {
+		go func() {
+			_ = s.esl.OriginateB2B(context.Background(), callerNumber, calleeNumber, callerNumber, gateway)
+		}()
+	}
+
 	s.logger.Info().Int64("call_id", c.ID).Str("caller", callerNumber).Str("callee", calleeNumber).Msg("b2b call initiated")
 	return c, nil
 }
 
 // FlashSMS sends a flash SMS (闪信) that appears immediately on screen without user action.
 func (s *Service) FlashSMS(ctx context.Context, tenantID int64, phoneNumber, message string) error {
+	if s.esl != nil {
+		if err := s.esl.FlashSMS(ctx, "system", phoneNumber, message); err != nil {
+			s.logger.Error().Err(err).Str("phone", phoneNumber).Msg("flash SMS failed")
+			return err
+		}
+	}
 	s.logger.Info().Int64("tenant_id", tenantID).Str("phone", phoneNumber).Msg("flash SMS sent")
 	return nil
 }

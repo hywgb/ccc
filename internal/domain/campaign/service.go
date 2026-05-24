@@ -330,9 +330,21 @@ func (s *CampaignService) SkipCase(ctx context.Context, campaignID, caseID int64
 	if cs.CampaignID != campaignID {
 		return ErrCaseNotFound
 	}
-	cs.Status = CaseStatusFailed
-	cs.UpdatedAt = time.Now()
 	now := time.Now()
+	cs.Status = CaseStatusSkipped
+	cs.UpdatedAt = now
 	cs.CompletedAt = &now
-	return s.cases.Update(ctx, cs)
+	if err := s.cases.Update(ctx, cs); err != nil {
+		return err
+	}
+
+	c, _ := s.campaigns.GetByID(ctx, campaignID)
+	if c != nil {
+		c.CompletedCases++
+		c.FailedCases++
+		c.UpdatedAt = now
+		s.autoComplete(c, now)
+		_ = s.campaigns.Update(ctx, c)
+	}
+	return nil
 }
