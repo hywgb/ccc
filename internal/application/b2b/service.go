@@ -50,7 +50,9 @@ func (s *Service) Back2BackCall(ctx context.Context, tenantID int64, callerNumbe
 	// Originate B2B call via ESL
 	if s.esl != nil && gateway != "" {
 		go func() {
-			_ = s.esl.OriginateB2B(context.Background(), callerNumber, calleeNumber, callerNumber, gateway)
+			eslCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			_ = s.esl.OriginateB2B(eslCtx, callerNumber, calleeNumber, callerNumber, gateway)
 		}()
 	}
 
@@ -99,7 +101,9 @@ func (s *Service) EncryptedCall(ctx context.Context, tenantID int64, callerNumbe
 	// Originate encrypted call via ESL with number masking
 	if s.esl != nil && intermediateNumber != "" {
 		go func() {
-			_ = s.esl.OriginateB2B(context.Background(), callerNumber, calleeNumber, intermediateNumber, "default")
+			eslCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			_ = s.esl.OriginateB2B(eslCtx, callerNumber, calleeNumber, intermediateNumber, "default")
 		}()
 	}
 
