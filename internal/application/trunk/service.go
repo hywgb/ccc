@@ -95,7 +95,7 @@ func (m *HealthMonitor) sendOPTIONS(t *telephony.SIPTrunk) bool {
 		m.logger.Debug().Int64("trunk_id", t.ID).Err(err).Msg("trunk ESL status check failed")
 		return false
 	}
-	return strings.Contains(resp, "REGED") || strings.Contains(resp, "NOREG")
+	return (strings.Contains(resp, "REGED") && !strings.Contains(resp, "UNREGED")) || strings.Contains(resp, "NOREG")
 }
 
 // SelectTrunk picks a healthy trunk from a group with automatic failover.

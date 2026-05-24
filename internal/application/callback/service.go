@@ -28,7 +28,11 @@ func (s *Scheduler) ProcessPending(ctx context.Context, tenantID int64) (int, er
 
 	processed := 0
 	for _, cb := range pending {
-		if cb.AttemptCount >= 3 {
+		maxAttempts := cb.MaxAttempts
+		if maxAttempts <= 0 {
+			maxAttempts = 3
+		}
+		if cb.AttemptCount >= maxAttempts {
 			now := time.Now()
 			cb.Status = "max_attempts"
 			cb.LastAttemptAt = &now

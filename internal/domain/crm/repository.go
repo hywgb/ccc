@@ -20,6 +20,7 @@ type CustomerPhoneRepository interface {
 type CustomerInteractionRepository interface {
 	Create(ctx context.Context, i *CustomerInteraction) error
 	ListByCustomer(ctx context.Context, customerID int64, offset, limit int) ([]*CustomerInteraction, error)
+	DeleteByCustomer(ctx context.Context, customerID int64) error
 }
 
 type CustomFieldDefinitionRepository interface {

@@ -163,7 +163,7 @@ func main() {
 	reportSvc := report.NewReportService(agentReportRepo, groupAgentReportRepo, skillGroupReportRepo, b2bReportRepo, internalCallReportRepo, agentStatusLogRepo)
 
 	// --- Phase 6 Domain Services ---
-	campaignSvc := campaign.NewCampaignService(campaignRepo, campaignCaseRepo)
+	campaignSvc := campaign.NewCampaignService(campaignRepo, campaignCaseRepo, dncSvc)
 	trunkHealthSvc := telephony.NewTrunkHealthService(sipTrunkRepo, trunkGroupRepo)
 	_ = trunkHealthSvc
 

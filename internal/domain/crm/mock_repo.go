@@ -166,6 +166,17 @@ func (r *MockInteractionRepo) ListByCustomer(_ context.Context, customerID int64
 	return result[offset:end], nil
 }
 
+func (r *MockInteractionRepo) DeleteByCustomer(_ context.Context, customerID int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, i := range r.data {
+		if i.CustomerID == customerID {
+			delete(r.data, id)
+		}
+	}
+	return nil
+}
+
 // MockCustomFieldRepo is an in-memory CustomFieldDefinitionRepository for testing.
 type MockCustomFieldRepo struct {
 	mu   sync.RWMutex

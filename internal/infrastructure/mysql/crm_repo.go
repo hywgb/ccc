@@ -108,6 +108,11 @@ func (r *InteractionRepo) ListByCustomer(ctx context.Context, customerID int64, 
 	return result, err
 }
 
+func (r *InteractionRepo) DeleteByCustomer(ctx context.Context, customerID int64) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM customer_interactions WHERE customer_id=?`, customerID)
+	return err
+}
+
 type CustomFieldRepo struct{ db *sqlx.DB }
 
 func NewCustomFieldRepo(db *sqlx.DB) *CustomFieldRepo { return &CustomFieldRepo{db: db} }

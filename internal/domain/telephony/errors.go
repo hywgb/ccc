@@ -13,4 +13,5 @@ var (
 	ErrTrunkGroupNotFound  = errors.New("trunk group not found")
 	ErrNoHealthyTrunk      = errors.New("no healthy trunk available")
 	ErrTrunkDown           = errors.New("trunk is down")
+	ErrInvalidPhoneFormat  = errors.New("phone number must start with + and contain only digits (E.164)")
 )

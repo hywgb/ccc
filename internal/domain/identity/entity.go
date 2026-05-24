@@ -157,6 +157,7 @@ type AgentPresence struct {
 	BreakReasonCode string              `db:"break_reason_code" json:"break_reason_code,omitempty"`
 	DispositionCode string              `db:"disposition_code" json:"disposition_code,omitempty"`
 	CurrentCallID   *int64              `db:"current_call_id" json:"current_call_id,omitempty"`
+	ACWSeconds      int                 `db:"acw_seconds" json:"acw_seconds"`
 	CheckedInAt     *time.Time          `db:"checked_in_at" json:"checked_in_at,omitempty"`
 	LastStatusAt    time.Time           `db:"last_status_at" json:"last_status_at"`
 	UpdatedAt       time.Time           `db:"updated_at" json:"updated_at"`

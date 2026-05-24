@@ -114,7 +114,7 @@ func calcAbandonRate(abandoned, total int) float64 {
 
 func (s *Service) dialLoop(campaignID int64, state *dialerState) {
 	ctx := context.Background()
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	for {

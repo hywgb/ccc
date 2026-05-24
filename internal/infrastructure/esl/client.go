@@ -206,75 +206,89 @@ func (c *Client) SendCommand(ctx context.Context, command string) (string, error
 	return body, nil
 }
 
+// sanitizeParam rejects ESL command parameters that contain control characters
+// which could terminate or inject additional commands.
+func sanitizeParam(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r == '\n' || r == '\r' || r == '\x00' {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
 // Originate starts a new call via FreeSWITCH.
 func (c *Client) Originate(ctx context.Context, dest, callerID, context_ string) (string, error) {
-	cmd := fmt.Sprintf("originate {origination_caller_id_number=%s}%s %s", callerID, dest, context_)
+	cmd := fmt.Sprintf("originate {origination_caller_id_number=%s}%s %s", sanitizeParam(callerID), sanitizeParam(dest), sanitizeParam(context_))
 	return c.SendCommand(ctx, cmd)
 }
 
 // HangupCall hangs up a call by UUID.
 func (c *Client) HangupCall(ctx context.Context, uuid string) error {
-	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_kill %s", uuid))
+	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_kill %s", sanitizeParam(uuid)))
 	return err
 }
 
 // PlayAudio plays an audio file on a call.
 func (c *Client) PlayAudio(ctx context.Context, uuid, filePath string) error {
-	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_broadcast %s %s both", uuid, filePath))
+	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_broadcast %s %s both", sanitizeParam(uuid), sanitizeParam(filePath)))
 	return err
 }
 
 // StartRecording starts recording a call.
 func (c *Client) StartRecording(ctx context.Context, uuid, filePath string) error {
-	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_record %s start %s", uuid, filePath))
+	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_record %s start %s", sanitizeParam(uuid), sanitizeParam(filePath)))
 	return err
 }
 
 // TransferCall transfers a call to another destination.
 func (c *Client) TransferCall(ctx context.Context, uuid, dest string) error {
-	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_transfer %s %s", uuid, dest))
+	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_transfer %s %s", sanitizeParam(uuid), sanitizeParam(dest)))
 	return err
 }
 
 // HoldCall puts a call on hold.
 func (c *Client) HoldCall(ctx context.Context, uuid string) error {
-	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_hold %s", uuid))
+	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_hold %s", sanitizeParam(uuid)))
 	return err
 }
 
 // RetrieveCall takes a call off hold.
 func (c *Client) RetrieveCall(ctx context.Context, uuid string) error {
-	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_hold off %s", uuid))
+	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_hold off %s", sanitizeParam(uuid)))
 	return err
 }
 
 // SendDTMF sends DTMF digits to a call.
 func (c *Client) SendDTMF(ctx context.Context, uuid, digits string) error {
-	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_send_dtmf %s %s", uuid, digits))
+	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_send_dtmf %s %s", sanitizeParam(uuid), sanitizeParam(digits)))
 	return err
 }
 
 // Bridge bridges two call legs.
 func (c *Client) Bridge(ctx context.Context, uuid1, uuid2 string) error {
-	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_bridge %s %s", uuid1, uuid2))
+	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_bridge %s %s", sanitizeParam(uuid1), sanitizeParam(uuid2)))
 	return err
 }
 
 // Conference adds a call leg to a conference room via mod_conference.
 func (c *Client) Conference(ctx context.Context, uuid, confName string) error {
-	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_transfer %s conference:%s@default inline", uuid, confName))
+	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_transfer %s conference:%s@default inline", sanitizeParam(uuid), sanitizeParam(confName)))
 	return err
 }
 
 // Eavesdrop starts monitoring a call (listen-only mode).
 func (c *Client) Eavesdrop(ctx context.Context, spyUUID, targetUUID string) error {
-	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_transfer %s eavesdrop:%s inline", spyUUID, targetUUID))
+	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_transfer %s eavesdrop:%s inline", sanitizeParam(spyUUID), sanitizeParam(targetUUID)))
 	return err
 }
 
 // EavesdropWhisper monitors with whisper (spy can talk to agent only).
 func (c *Client) EavesdropWhisper(ctx context.Context, spyUUID, targetUUID string) error {
-	cmd := fmt.Sprintf("uuid_setvar %s eavesdrop_whisper_bleg true", spyUUID)
+	cmd := fmt.Sprintf("uuid_setvar %s eavesdrop_whisper_bleg true", sanitizeParam(spyUUID))
 	if _, err := c.SendCommand(ctx, cmd); err != nil {
 		return err
 	}
@@ -283,7 +297,7 @@ func (c *Client) EavesdropWhisper(ctx context.Context, spyUUID, targetUUID strin
 
 // EavesdropBarge monitors with barge (spy can talk to both parties).
 func (c *Client) EavesdropBarge(ctx context.Context, spyUUID, targetUUID string) error {
-	cmd := fmt.Sprintf("uuid_setvar %s eavesdrop_enable_dtmf true", spyUUID)
+	cmd := fmt.Sprintf("uuid_setvar %s eavesdrop_enable_dtmf true", sanitizeParam(spyUUID))
 	if _, err := c.SendCommand(ctx, cmd); err != nil {
 		return err
 	}
@@ -292,13 +306,13 @@ func (c *Client) EavesdropBarge(ctx context.Context, spyUUID, targetUUID string)
 
 // Intercept takes over a call from another agent.
 func (c *Client) Intercept(ctx context.Context, interceptorUUID, targetUUID string) error {
-	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_transfer %s intercept:%s inline", interceptorUUID, targetUUID))
+	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_transfer %s intercept:%s inline", sanitizeParam(interceptorUUID), sanitizeParam(targetUUID)))
 	return err
 }
 
 // Coach starts a coaching session (coach audio to agent only, customer cannot hear).
 func (c *Client) Coach(ctx context.Context, coachUUID, targetUUID string) error {
-	cmd := fmt.Sprintf("uuid_setvar %s eavesdrop_whisper_aleg true", coachUUID)
+	cmd := fmt.Sprintf("uuid_setvar %s eavesdrop_whisper_aleg true", sanitizeParam(coachUUID))
 	if _, err := c.SendCommand(ctx, cmd); err != nil {
 		return err
 	}
@@ -307,36 +321,36 @@ func (c *Client) Coach(ctx context.Context, coachUUID, targetUUID string) error 
 
 // WhisperAnnouncement plays a whisper announcement to the agent before connecting.
 func (c *Client) WhisperAnnouncement(ctx context.Context, uuid, audioFile string) error {
-	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_broadcast %s %s aleg", uuid, audioFile))
+	_, err := c.SendCommand(ctx, fmt.Sprintf("uuid_broadcast %s %s aleg", sanitizeParam(uuid), sanitizeParam(audioFile)))
 	return err
 }
 
 // RegisterSIPPhone registers a SIP phone via mod_sofia (configuration).
 func (c *Client) RegisterSIPPhone(ctx context.Context, extension, password, domain string) error {
-	cmd := fmt.Sprintf("sofia profile internal register sip:%s@%s", extension, domain)
+	cmd := fmt.Sprintf("sofia profile internal register sip:%s@%s", sanitizeParam(extension), sanitizeParam(domain))
 	_, err := c.SendCommand(ctx, cmd)
 	return err
 }
 
 // OriginateToPhone bridges a call to an external phone number (field mode).
 func (c *Client) OriginateToPhone(ctx context.Context, uuid, phoneNumber, callerID, gateway string) error {
-	dest := fmt.Sprintf("sofia/gateway/%s/%s", gateway, phoneNumber)
-	cmd := fmt.Sprintf("uuid_transfer %s bridge:{origination_caller_id_number=%s}%s inline", uuid, callerID, dest)
+	dest := fmt.Sprintf("sofia/gateway/%s/%s", sanitizeParam(gateway), sanitizeParam(phoneNumber))
+	cmd := fmt.Sprintf("uuid_transfer %s bridge:{origination_caller_id_number=%s}%s inline", sanitizeParam(uuid), sanitizeParam(callerID), dest)
 	_, err := c.SendCommand(ctx, cmd)
 	return err
 }
 
 // OriginateB2B initiates a back-to-back call (双呼) bridging two external parties.
 func (c *Client) OriginateB2B(ctx context.Context, callerNum, calleeNum, callerID, gateway string) error {
-	dest := fmt.Sprintf("sofia/gateway/%s/%s", gateway, calleeNum)
-	cmd := fmt.Sprintf("originate {origination_caller_id_number=%s}sofia/gateway/%s/%s &bridge(%s)", callerID, gateway, callerNum, dest)
+	dest := fmt.Sprintf("sofia/gateway/%s/%s", sanitizeParam(gateway), sanitizeParam(calleeNum))
+	cmd := fmt.Sprintf("originate {origination_caller_id_number=%s}sofia/gateway/%s/%s &bridge(%s)", sanitizeParam(callerID), sanitizeParam(gateway), sanitizeParam(callerNum), dest)
 	_, err := c.SendCommand(ctx, cmd)
 	return err
 }
 
 // FlashSMS sends a flash/push SMS via FreeSWITCH chat API.
 func (c *Client) FlashSMS(ctx context.Context, from, to, message string) error {
-	cmd := fmt.Sprintf("chat sms|%s|%s|%s", from, to, message)
+	cmd := fmt.Sprintf("chat sms|%s|%s|%s", sanitizeParam(from), sanitizeParam(to), sanitizeParam(message))
 	_, err := c.SendCommand(ctx, cmd)
 	return err
 }

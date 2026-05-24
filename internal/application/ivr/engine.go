@@ -117,8 +117,11 @@ func NewSession(callID, tenantID, flowID int64, callUUID string, eslClient *esl.
 	}
 }
 
+// FlowLoader retrieves a parsed FlowGraph by flow ID.
+type FlowLoader func(ctx context.Context, flowID int64) (*routing.FlowGraph, error)
+
 // DefaultEngine returns an engine with all built-in node handlers registered.
-func DefaultEngine(eslClient *esl.Client) *Engine {
+func DefaultEngine(eslClient *esl.Client, flowLoader FlowLoader) *Engine {
 	e := NewEngine()
 	e.RegisterHandler(routing.NodeStart, &StartHandler{})
 	e.RegisterHandler(routing.NodePlay, &PlayHandler{})
@@ -137,7 +140,7 @@ func DefaultEngine(eslClient *esl.Client) *Engine {
 	e.RegisterHandler(routing.NodeTransferToAgent, &TransferToAgentHandler{})
 	e.RegisterHandler(routing.NodeTransferToExternal, &TransferToExternalHandler{})
 	e.RegisterHandler(routing.NodeBlindTransfer, &BlindTransferHandler{})
-	e.RegisterHandler(routing.NodeSubFlow, &SubFlowHandler{})
+	e.RegisterHandler(routing.NodeSubFlow, &SubFlowHandler{engine: e, flowLoader: flowLoader})
 	e.RegisterHandler(routing.NodeDigitalEmployee, &DigitalEmployeeHandler{})
 	e.RegisterHandler(routing.NodeCallback, &CallbackHandler{})
 	return e

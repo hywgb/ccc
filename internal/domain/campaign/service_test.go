@@ -14,7 +14,7 @@ func init() {
 }
 
 func newTestService() *CampaignService {
-	return NewCampaignService(NewMockCampaignRepo(), NewMockCampaignCaseRepo())
+	return NewCampaignService(NewMockCampaignRepo(), NewMockCampaignCaseRepo(), nil)
 }
 
 func TestCampaignService_Create_Success(t *testing.T) {

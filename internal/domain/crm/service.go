@@ -147,6 +147,9 @@ func (s *CustomerService) Delete(ctx context.Context, id int64) error {
 	if err := s.phones.DeleteByCustomer(ctx, id); err != nil {
 		return err
 	}
+	if err := s.interactions.DeleteByCustomer(ctx, id); err != nil {
+		return err
+	}
 	return s.customers.Delete(ctx, id)
 }
 
