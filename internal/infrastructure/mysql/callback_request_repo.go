@@ -44,3 +44,10 @@ func (r *CallbackRequestRepo) ListPending(ctx context.Context, tenantID int64) (
 		tenantID)
 	return items, err
 }
+
+func (r *CallbackRequestRepo) ListAllPending(ctx context.Context) ([]*call.CallbackRequest, error) {
+	var items []*call.CallbackRequest
+	err := r.db.SelectContext(ctx, &items,
+		`SELECT * FROM callback_requests WHERE status IN ('pending', 'retry') ORDER BY created_at ASC`)
+	return items, err
+}

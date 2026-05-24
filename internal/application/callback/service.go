@@ -21,13 +21,25 @@ func NewScheduler(cbRepo call.CallbackRequestRepository, callSvc *call.CallServi
 	return &Scheduler{callbackRepo: cbRepo, callSvc: callSvc, outboundSvc: outboundSvc, logger: logger}
 }
 
-// ProcessPending finds pending callbacks and attempts them.
+// ProcessAllPending finds pending callbacks across all tenants and attempts them.
+func (s *Scheduler) ProcessAllPending(ctx context.Context) (int, error) {
+	pending, err := s.callbackRepo.ListAllPending(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return s.processList(ctx, pending)
+}
+
+// ProcessPending finds pending callbacks for a specific tenant and attempts them.
 func (s *Scheduler) ProcessPending(ctx context.Context, tenantID int64) (int, error) {
 	pending, err := s.callbackRepo.ListPending(ctx, tenantID)
 	if err != nil {
 		return 0, err
 	}
+	return s.processList(ctx, pending)
+}
 
+func (s *Scheduler) processList(ctx context.Context, pending []*call.CallbackRequest) (int, error) {
 	processed := 0
 	for _, cb := range pending {
 		maxAttempts := cb.MaxAttempts
@@ -49,8 +61,8 @@ func (s *Scheduler) ProcessPending(ctx context.Context, tenantID int64) (int, er
 		var err error
 		if s.outboundSvc != nil {
 			_, err = s.outboundSvc.Dial(ctx, outbound.DialRequest{
-				TenantID: cb.TenantID,
-				Callee:   cb.Caller,
+				TenantID:  cb.TenantID,
+				Callee:    cb.Caller,
 				MediaType: call.MediaTypeAudio,
 			})
 		} else {

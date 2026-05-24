@@ -234,3 +234,7 @@ func (r *mockSIPTrunkRepo) Update(_ context.Context, t *SIPTrunk) error {
 func (r *mockSIPTrunkRepo) List(_ context.Context, _ int64, _, _ int) ([]*SIPTrunk, int64, error) {
 	return nil, 0, nil
 }
+
+func (r *mockSIPTrunkRepo) ListAll(_ context.Context, _, _ int) ([]*SIPTrunk, int64, error) {
+	return nil, 0, nil
+}

@@ -20,6 +20,7 @@ import (
 	"github.com/divord97/ccc/internal/application/imassist"
 	"github.com/divord97/ccc/internal/application/imhub"
 	"github.com/divord97/ccc/internal/application/imrouter"
+	"github.com/divord97/ccc/internal/application/ivr"
 	"github.com/divord97/ccc/internal/application/lifecycle"
 	"github.com/divord97/ccc/internal/application/outbound"
 	"github.com/divord97/ccc/internal/application/screenpop"
@@ -209,10 +210,25 @@ func main() {
 	callbackSch := callback.NewScheduler(callbackRepo, callSvc, outboundSvc, logger)
 	screenPopSvc := screenpop.NewService(screenPopConfigRepo, customerSvc)
 	webhookSvc := webhook.NewService(webhookConfigRepo, webhookLogRepo, logger)
-	lifecycleSvc := lifecycle.NewService(callSvc, agentPresenceSvc, csatSvc, webhookSvc, customerSvc, screenPopSvc)
+	lifecycleSvc := lifecycle.NewService(callSvc, agentPresenceSvc, csatSvc, webhookSvc, customerSvc, screenPopSvc, recordingRepo, eslClient)
 	imRouterSvc := imrouter.NewService(imSvc, agentPresenceSvc, skillGroupSvc, logger)
 	trunkMonitor := trunk.NewHealthMonitor(sipTrunkRepo, trunkHealthSvc, logger, eslClient)
 	emailSvc := email.NewService(imSvc, logger)
+
+	// IVR Engine: create engine with all node handlers for flow execution.
+	ivrFlowLoader := func(ctx context.Context, flowID int64) (*routing.FlowGraph, error) {
+		f, err := ivrFlowSvc.GetByID(ctx, flowID)
+		if err != nil || f == nil {
+			return nil, fmt.Errorf("flow %d not found", flowID)
+		}
+		g, err := routing.ValidateGraph(f.Graph)
+		if err != nil {
+			return nil, err
+		}
+		return g, nil
+	}
+	ivrEngine := ivr.DefaultEngine(eslClient, ivrFlowLoader)
+	_ = ivrEngine
 	// LLM Provider: use DashScope when API key configured, otherwise fallback to stub.
 	var llmProvider llm.Provider
 	if cfg.Aliyun.DashScopeAPIKey != "" {
@@ -513,7 +529,7 @@ func main() {
 			case <-hubCtx.Done():
 				return
 			case <-ticker.C:
-				if n, err := callbackSch.ProcessPending(hubCtx, 0); err == nil && n > 0 {
+				if n, err := callbackSch.ProcessAllPending(hubCtx); err == nil && n > 0 {
 					logger.Info().Int("processed", n).Msg("callback scheduler: processed pending callbacks")
 				}
 			}
@@ -521,7 +537,7 @@ func main() {
 	}()
 
 	// Start trunk health monitor
-	trunkMonitor.Start(hubCtx, 0)
+	trunkMonitor.Start(hubCtx)
 
 	// Wire IM router into session handler for auto-assignment
 	imSessionHandler.SetRouter(imRouterSvc)

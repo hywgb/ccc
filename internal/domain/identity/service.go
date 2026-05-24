@@ -155,6 +155,9 @@ func (s *UserService) List(ctx context.Context, tenantID int64, offset, limit in
 func (s *UserService) ChangePassword(ctx context.Context, userID int64, oldPassword, newPassword string) error {
 	u, err := s.users.GetByID(ctx, userID)
 	if err != nil {
+		return err
+	}
+	if u == nil {
 		return ErrUserNotFound
 	}
 	if u.PasswordHash == "" {

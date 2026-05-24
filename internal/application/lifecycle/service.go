@@ -11,6 +11,8 @@ import (
 	"github.com/divord97/ccc/internal/domain/call"
 	"github.com/divord97/ccc/internal/domain/crm"
 	"github.com/divord97/ccc/internal/domain/identity"
+	"github.com/divord97/ccc/internal/infrastructure/esl"
+	"github.com/divord97/ccc/pkg/snowflake"
 )
 
 // AgentNotifier pushes real-time events to connected agent WebSocket clients.
@@ -20,13 +22,15 @@ type AgentNotifier interface {
 
 // Service orchestrates cross-domain side effects for call lifecycle events.
 type Service struct {
-	callSvc     *call.CallService
-	presenceSvc *identity.AgentPresenceService
-	csatSvc     *csat.Service
-	webhookSvc  *webhook.Service
-	customerSvc *crm.CustomerService
-	screenPop   *screenpop.Service
-	notifier    AgentNotifier
+	callSvc       *call.CallService
+	presenceSvc   *identity.AgentPresenceService
+	csatSvc       *csat.Service
+	webhookSvc    *webhook.Service
+	customerSvc   *crm.CustomerService
+	screenPop     *screenpop.Service
+	recordingRepo call.RecordingRepository
+	eslClient     *esl.Client
+	notifier      AgentNotifier
 }
 
 func NewService(
@@ -36,14 +40,18 @@ func NewService(
 	webhookSvc *webhook.Service,
 	customerSvc *crm.CustomerService,
 	screenPop *screenpop.Service,
+	recordingRepo call.RecordingRepository,
+	eslClient *esl.Client,
 ) *Service {
 	return &Service{
-		callSvc:     callSvc,
-		presenceSvc: presenceSvc,
-		csatSvc:     csatSvc,
-		webhookSvc:  webhookSvc,
-		customerSvc: customerSvc,
-		screenPop:   screenPop,
+		callSvc:       callSvc,
+		presenceSvc:   presenceSvc,
+		csatSvc:       csatSvc,
+		webhookSvc:    webhookSvc,
+		customerSvc:   customerSvc,
+		screenPop:     screenPop,
+		recordingRepo: recordingRepo,
+		eslClient:     eslClient,
 	}
 }
 
@@ -52,6 +60,9 @@ func (s *Service) SetAgentNotifier(n AgentNotifier) {
 }
 
 // EndCall ends a call and triggers all post-call side effects:
+//   - Hangup FreeSWITCH channel
+//   - Save recording record to DB
+//   - Calculate IVR/queue/ring durations from call events
 //   - Agent → ACW state transition
 //   - Real-time WebSocket notification to agent
 //   - CSAT satisfaction survey
@@ -61,6 +72,40 @@ func (s *Service) EndCall(ctx context.Context, callID int64, reason call.HangupR
 	c, err := s.callSvc.EndCall(ctx, callID, reason)
 	if err != nil {
 		return nil, err
+	}
+
+	// Hangup FreeSWITCH channel
+	if s.eslClient != nil && c.ChannelUUID != "" {
+		_ = s.eslClient.HangupCall(ctx, c.ChannelUUID)
+	}
+
+	// Save recording record (only for answered calls that had recording started)
+	if s.recordingRepo != nil && c.AnsweredAt != nil && c.ChannelUUID != "" {
+		durSec := 0
+		if c.EndedAt != nil {
+			durSec = int(c.EndedAt.Sub(*c.AnsweredAt).Seconds())
+		}
+		_ = s.recordingRepo.Create(ctx, &call.Recording{
+			ID:          snowflake.NextID(),
+			TenantID:    c.TenantID,
+			CallID:      c.ID,
+			AgentUserID: c.AgentUserID,
+			FileName:    fmt.Sprintf("%d.wav", c.ID),
+			FilePath:    fmt.Sprintf("/recordings/%d/%d.wav", c.TenantID, c.ID),
+			DurationSec: durSec,
+			MimeType:    "audio/wav",
+			StorageTier: "hot",
+			Consent:     true,
+			Status:      "completed",
+			CreatedAt:   time.Now(),
+		})
+	}
+
+	// Calculate IVR/queue/ring durations from call events
+	events, _ := s.callSvc.ListEvents(ctx, callID)
+	if len(events) > 0 {
+		s.callSvc.CalculateDurations(c, events)
+		_ = s.callSvc.UpdateDurations(ctx, c)
 	}
 
 	// Agent → ACW (non-blocking, best-effort)
@@ -111,7 +156,12 @@ func (s *Service) EndCall(ctx context.Context, callID int64, reason call.HangupR
 	return c, nil
 }
 
-// AnswerCall marks a call as answered and triggers inbound screen pop.
+// AnswerCall marks a call as answered and triggers side effects:
+//   - Agent → Talking state
+//   - Start call recording via ESL
+//   - Real-time WebSocket notification
+//   - Screen pop for inbound calls
+//   - Webhook notification
 func (s *Service) AnswerCall(ctx context.Context, callID int64, agentUserID int64) (*call.Call, *screenpop.ScreenPopData, error) {
 	c, err := s.callSvc.AnswerCall(ctx, callID, agentUserID)
 	if err != nil {
@@ -121,6 +171,12 @@ func (s *Service) AnswerCall(ctx context.Context, callID int64, agentUserID int6
 	// Agent → Talking state
 	if s.presenceSvc != nil {
 		_, _ = s.presenceSvc.TransitionTo(ctx, agentUserID, identity.PresenceTalking)
+	}
+
+	// Start recording via ESL
+	if s.eslClient != nil && c.ChannelUUID != "" {
+		filePath := fmt.Sprintf("/recordings/%d/%d.wav", c.TenantID, c.ID)
+		_ = s.eslClient.StartRecording(ctx, c.ChannelUUID, filePath)
 	}
 
 	// Real-time agent notification

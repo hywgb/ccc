@@ -37,10 +37,10 @@ func NewHealthMonitor(
 	}
 }
 
-// Start begins periodic health checks for all trunks.
-func (m *HealthMonitor) Start(ctx context.Context, tenantID int64) {
-	go m.loop(ctx, tenantID)
-	m.logger.Info().Int64("tenant_id", tenantID).Msg("trunk health monitor started")
+// Start begins periodic health checks for all trunks across all tenants.
+func (m *HealthMonitor) Start(ctx context.Context) {
+	go m.loop(ctx)
+	m.logger.Info().Msg("trunk health monitor started")
 }
 
 // Stop terminates the health check loop.
@@ -48,7 +48,7 @@ func (m *HealthMonitor) Stop() {
 	close(m.stopCh)
 }
 
-func (m *HealthMonitor) loop(ctx context.Context, tenantID int64) {
+func (m *HealthMonitor) loop(ctx context.Context) {
 	ticker := time.NewTicker(m.interval)
 	defer ticker.Stop()
 
@@ -59,13 +59,13 @@ func (m *HealthMonitor) loop(ctx context.Context, tenantID int64) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			m.checkAll(ctx, tenantID)
+			m.checkAll(ctx)
 		}
 	}
 }
 
-func (m *HealthMonitor) checkAll(ctx context.Context, tenantID int64) {
-	trunks, _, err := m.trunks.List(ctx, tenantID, 0, 100)
+func (m *HealthMonitor) checkAll(ctx context.Context) {
+	trunks, _, err := m.trunks.ListAll(ctx, 0, 100)
 	if err != nil {
 		m.logger.Error().Err(err).Msg("trunk health: failed to list trunks")
 		return

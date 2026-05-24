@@ -59,4 +59,5 @@ type CallbackRequestRepository interface {
 	GetByID(ctx context.Context, id int64) (*CallbackRequest, error)
 	Update(ctx context.Context, r *CallbackRequest) error
 	ListPending(ctx context.Context, tenantID int64) ([]*CallbackRequest, error)
+	ListAllPending(ctx context.Context) ([]*CallbackRequest, error)
 }
