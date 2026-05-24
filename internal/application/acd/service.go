@@ -37,6 +37,7 @@ const (
 	activeSGKey       = "acd:active_sg"    // SET of skill_group_ids that have ever been used
 	agentClaimPrefix  = "acd:agent_claim:" // SETNX agent_id during dispatch to avoid double-route
 	roundRobinPrefix  = "acd:rr_cursor:"   // INCR cursor per skill group
+	lastAgentPrefix   = "acd:last_agent:"  // key: {tenant}:{caller} -> agent_user_id (familiar policy)
 	defaultPollPeriod = 500 * time.Millisecond
 	agentClaimTTL     = 30 * time.Second
 )
@@ -44,6 +45,7 @@ const (
 // LifecycleService is the subset of lifecycle.Service required by the dispatcher.
 type LifecycleService interface {
 	TransitionCallToRinging(ctx context.Context, callID, agentUserID int64) (*call.Call, error)
+	EndCall(ctx context.Context, callID int64, reason call.HangupReason) (*call.Call, error)
 }
 
 var _ LifecycleService = (*lifecycle.Service)(nil)
@@ -63,6 +65,13 @@ type SkillGroups interface {
 	GetByID(ctx context.Context, id int64) (*identity.SkillGroup, error)
 }
 
+// CallLookup loads a queued call so the dispatcher can read its caller phone
+// number (needed by the familiar-customer routing policy). Optional; when nil
+// familiar falls back to longest-idle.
+type CallLookup interface {
+	GetByID(ctx context.Context, id int64) (*call.Call, error)
+}
+
 // Service is the ACD dispatcher.
 type Service struct {
 	rdb        *redis.Client
@@ -70,6 +79,7 @@ type Service struct {
 	presence   PresenceRepo
 	members    MembersRepo
 	skillGroup SkillGroups
+	calls      CallLookup
 	logger     zerolog.Logger
 	pollPeriod time.Duration
 	rng        *rand.Rand
@@ -82,6 +92,7 @@ type Config struct {
 	Presence   PresenceRepo
 	Members    MembersRepo
 	SkillGroup SkillGroups
+	Calls      CallLookup
 	Logger     zerolog.Logger
 	PollPeriod time.Duration
 }
@@ -98,6 +109,7 @@ func NewService(cfg Config) *Service {
 		presence:   cfg.Presence,
 		members:    cfg.Members,
 		skillGroup: cfg.SkillGroup,
+		calls:      cfg.Calls,
 		logger:     cfg.Logger,
 		pollPeriod: pp,
 		rng:        rand.New(rand.NewSource(time.Now().UnixNano())),
@@ -150,8 +162,54 @@ func (s *Service) tick(ctx context.Context) {
 		if err != nil {
 			continue
 		}
+		s.expireQueued(ctx, sgID)
 		s.dispatchOne(ctx, sgID)
 	}
+}
+
+// expireQueued drains calls whose wait time has exceeded the skill group
+// max_wait_sec setting, marking them abandoned via lifecycle.EndCall so that
+// post-call hooks (recording, webhook, etc.) still run.
+func (s *Service) expireQueued(ctx context.Context, sgID int64) {
+	sg, err := s.skillGroup.GetByID(ctx, sgID)
+	if err != nil || sg == nil || sg.MaxWaitSec <= 0 {
+		return
+	}
+	entries, err := s.rdb.ZRangeWithScores(ctx, queueKey(sgID), 0, -1).Result()
+	if err != nil {
+		return
+	}
+	deadline := time.Now().Add(-time.Duration(sg.MaxWaitSec) * time.Second).UnixMilli()
+	for _, entry := range entries {
+		enqueuedAt, _ := tsFromScore(entry.Score)
+		if enqueuedAt > deadline {
+			continue
+		}
+		callIDStr, _ := entry.Member.(string)
+		callID, err := strconv.ParseInt(callIDStr, 10, 64)
+		if err != nil {
+			_ = s.rdb.ZRem(ctx, queueKey(sgID), entry.Member).Err()
+			continue
+		}
+		removed, err := s.rdb.ZRem(ctx, queueKey(sgID), callIDStr).Result()
+		if err != nil || removed == 0 {
+			continue
+		}
+		if _, err := s.lifecycle.EndCall(ctx, callID, call.HangupQueueTimeout); err != nil {
+			s.logger.Warn().Err(err).Int64("call_id", callID).Int64("sg", sgID).Msg("acd: queue timeout end call")
+			continue
+		}
+		s.logger.Info().Int64("call_id", callID).Int64("sg", sgID).Int("max_wait_sec", sg.MaxWaitSec).Msg("acd: call abandoned (queue timeout)")
+	}
+}
+
+// tsFromScore extracts the enqueue timestamp (ms since epoch) from the score
+// encoded by scoreFor; the priority window must be subtracted first.
+func tsFromScore(score float64) (int64, int) {
+	// Priority window from scoreFor is -1e10 per priority point.
+	priority := int(-score / 1e10)
+	ts := int64(score - float64(-priority)*1e10)
+	return ts, priority
 }
 
 // dispatchOne attempts to assign the head-of-queue call for a skill group to an
@@ -174,7 +232,7 @@ func (s *Service) dispatchOne(ctx context.Context, sgID int64) {
 		return
 	}
 
-	agentID, err := s.pickAgent(ctx, sg)
+	agentID, err := s.pickAgent(ctx, sg, callID)
 	if err != nil || agentID == 0 {
 		return
 	}
@@ -199,7 +257,7 @@ func (s *Service) dispatchOne(ctx context.Context, sgID int64) {
 	s.logger.Info().Int64("call_id", callID).Int64("agent_id", agentID).Int64("sg", sgID).Msg("acd: routed call to agent")
 }
 
-func (s *Service) pickAgent(ctx context.Context, sg *identity.SkillGroup) (int64, error) {
+func (s *Service) pickAgent(ctx context.Context, sg *identity.SkillGroup, callID int64) (int64, error) {
 	members, err := s.members.GetBySkillGroup(ctx, sg.ID)
 	if err != nil {
 		return 0, err
@@ -232,8 +290,18 @@ func (s *Service) pickAgent(ctx context.Context, sg *identity.SkillGroup) (int64
 			return candidates[0].ID, nil
 		}
 		return candidates[int((idx-1)%int64(len(candidates)))].ID, nil
+	case identity.RoutingPolicyFamiliar:
+		if preferred := s.lookupFamiliarAgent(ctx, callID); preferred > 0 {
+			for _, c := range candidates {
+				if c.ID == preferred {
+					return preferred, nil
+				}
+			}
+		}
+		fallthrough
 	default:
-		// longest-idle (least_recent / skill_weight / familiar all fall back to longest-idle).
+		// longest-idle (least_recent / skill_weight all fall back to longest-idle;
+		// familiar falls through here when there is no recent agent or that agent is not idle).
 		best := candidates[0]
 		for _, c := range candidates[1:] {
 			if c.LastIdle.Before(best.LastIdle) {
@@ -242,6 +310,39 @@ func (s *Service) pickAgent(ctx context.Context, sg *identity.SkillGroup) (int64
 		}
 		return best.ID, nil
 	}
+}
+
+// lookupFamiliarAgent returns the agent_user_id who most recently served the
+// caller of the given call, or 0 if no record exists.
+func (s *Service) lookupFamiliarAgent(ctx context.Context, callID int64) int64 {
+	if s.calls == nil {
+		return 0
+	}
+	c, err := s.calls.GetByID(ctx, callID)
+	if err != nil || c == nil || c.Caller == "" {
+		return 0
+	}
+	val, err := s.rdb.Get(ctx, familiarKey(c.TenantID, c.Caller)).Result()
+	if err != nil || val == "" {
+		return 0
+	}
+	agentID, _ := strconv.ParseInt(val, 10, 64)
+	return agentID
+}
+
+// RememberAgent records that agentID served the given caller. ttlDays caps how
+// long the affinity is kept; pass 0 to disable (RememberAgent becomes a no-op).
+// Called by lifecycle.Service.EndCall.
+func (s *Service) RememberAgent(ctx context.Context, tenantID int64, caller string, agentUserID int64, ttlDays int) {
+	if s.rdb == nil || caller == "" || agentUserID == 0 || ttlDays <= 0 {
+		return
+	}
+	ttl := time.Duration(ttlDays) * 24 * time.Hour
+	_ = s.rdb.Set(ctx, familiarKey(tenantID, caller), strconv.FormatInt(agentUserID, 10), ttl).Err()
+}
+
+func familiarKey(tenantID int64, caller string) string {
+	return fmt.Sprintf("%s%d:%s", lastAgentPrefix, tenantID, caller)
 }
 
 func (s *Service) tryClaim(ctx context.Context, agentID int64) bool {
