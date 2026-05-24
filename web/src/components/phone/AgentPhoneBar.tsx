@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Badge, Button, Dropdown, Input, Modal, Popover, Select, Space, Tag, Tooltip, message } from 'antd';
 import {
   PhoneOutlined, PhoneFilled, PauseCircleOutlined, SwapOutlined,
@@ -36,6 +36,11 @@ export default function AgentPhoneBar() {
   const [held, setHeld] = useState(false);
   const [duration, setDuration] = useState(0);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [acwCallId, setAcwCallId] = useState<number | null>(null);
+  const callIdRef = useRef<number | null>(null);
+
+  // Keep ref in sync with state so WebSocket handler can read current callId
+  useEffect(() => { callIdRef.current = callId; }, [callId]);
 
   // WebSocket for real-time call events
   useEffect(() => {
@@ -56,6 +61,7 @@ export default function AgentPhoneBar() {
             setDuration(0);
             break;
           case 'call_ended':
+            setAcwCallId(callIdRef.current);
             setStatus('acw');
             setHeld(false);
             setMuted(false);
@@ -155,7 +161,6 @@ export default function AgentPhoneBar() {
   const [dispositionOpen, setDispositionOpen] = useState(false);
   const [dispositionCode, setDispositionCode] = useState('');
   const [dispositionNote, setDispositionNote] = useState('');
-  const [acwCallId, setAcwCallId] = useState<number | null>(null);
 
   const handleFinishAcw = async () => {
     if (acwCallId && dispositionCode) {
