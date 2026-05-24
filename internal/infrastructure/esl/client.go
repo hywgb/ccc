@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -16,13 +17,15 @@ import (
 
 // Client wraps FreeSWITCH ESL connections with pooling, reconnect, and circuit breaker.
 type Client struct {
-	host    string
-	port    int
-	pass    string
-	pool    chan *conn
-	mu      sync.RWMutex
-	logger  zerolog.Logger
-	breaker *circuitBreaker
+	host     string
+	port     int
+	pass     string
+	pool     chan *conn
+	mu       sync.RWMutex
+	logger   zerolog.Logger
+	breaker  *circuitBreaker
+	closed   int32 // atomic: 1 = closed
+	maxIdle  time.Duration
 }
 
 type conn struct {
@@ -57,11 +60,12 @@ func NewClient(cfg Config) *Client {
 	}
 
 	c := &Client{
-		host:   cfg.Host,
-		port:   cfg.Port,
-		pass:   cfg.Password,
-		pool:   make(chan *conn, cfg.PoolSize),
-		logger: cfg.Logger,
+		host:    cfg.Host,
+		port:    cfg.Port,
+		pass:    cfg.Password,
+		pool:    make(chan *conn, cfg.PoolSize),
+		logger:  cfg.Logger,
+		maxIdle: 5 * time.Minute,
 		breaker: &circuitBreaker{
 			threshold:    5,
 			state:        "closed",
@@ -77,13 +81,24 @@ func NewClient(cfg Config) *Client {
 }
 
 func (c *Client) Acquire(ctx context.Context) (*conn, error) {
+	if atomic.LoadInt32(&c.closed) == 1 {
+		return nil, fmt.Errorf("esl: client closed")
+	}
 	if !c.breaker.allow() {
 		return nil, fmt.Errorf("esl: circuit breaker open, last failure at %v", c.breaker.lastFailure)
 	}
 
 	select {
 	case cn := <-c.pool:
-		if !cn.connected {
+		if cn == nil {
+			return nil, fmt.Errorf("esl: client closed")
+		}
+		// Reconnect if disconnected or idle too long
+		if !cn.connected || (c.maxIdle > 0 && time.Since(cn.lastUsed) > c.maxIdle) {
+			if cn.connected {
+				c.logger.Debug().Int("conn_id", cn.id).Msg("recycling stale ESL connection")
+				cn.connected = false
+			}
 			if err := c.connect(cn); err != nil {
 				c.pool <- cn
 				c.breaker.recordFailure()
@@ -99,6 +114,12 @@ func (c *Client) Acquire(ctx context.Context) (*conn, error) {
 }
 
 func (c *Client) Release(cn *conn) {
+	if atomic.LoadInt32(&c.closed) == 1 {
+		if cn.tcpConn != nil {
+			cn.tcpConn.Close()
+		}
+		return
+	}
 	c.pool <- cn
 }
 
@@ -297,8 +318,11 @@ func (c *Client) EavesdropWhisper(ctx context.Context, spyUUID, targetUUID strin
 
 // EavesdropBarge monitors with barge (spy can talk to both parties).
 func (c *Client) EavesdropBarge(ctx context.Context, spyUUID, targetUUID string) error {
-	cmd := fmt.Sprintf("uuid_setvar %s eavesdrop_enable_dtmf true", sanitizeParam(spyUUID))
-	if _, err := c.SendCommand(ctx, cmd); err != nil {
+	spySafe := sanitizeParam(spyUUID)
+	if _, err := c.SendCommand(ctx, fmt.Sprintf("uuid_setvar %s eavesdrop_whisper_aleg true", spySafe)); err != nil {
+		return err
+	}
+	if _, err := c.SendCommand(ctx, fmt.Sprintf("uuid_setvar %s eavesdrop_whisper_bleg true", spySafe)); err != nil {
 		return err
 	}
 	return c.Eavesdrop(ctx, spyUUID, targetUUID)
@@ -311,8 +335,9 @@ func (c *Client) Intercept(ctx context.Context, interceptorUUID, targetUUID stri
 }
 
 // Coach starts a coaching session (coach audio to agent only, customer cannot hear).
+// Uses whisper_bleg so the coach is heard by the agent (B-leg) only.
 func (c *Client) Coach(ctx context.Context, coachUUID, targetUUID string) error {
-	cmd := fmt.Sprintf("uuid_setvar %s eavesdrop_whisper_aleg true", sanitizeParam(coachUUID))
+	cmd := fmt.Sprintf("uuid_setvar %s eavesdrop_whisper_bleg true", sanitizeParam(coachUUID))
 	if _, err := c.SendCommand(ctx, cmd); err != nil {
 		return err
 	}
@@ -325,11 +350,17 @@ func (c *Client) WhisperAnnouncement(ctx context.Context, uuid, audioFile string
 	return err
 }
 
-// RegisterSIPPhone registers a SIP phone via mod_sofia (configuration).
+// RegisterSIPPhone checks if a SIP phone is registered via mod_sofia.
 func (c *Client) RegisterSIPPhone(ctx context.Context, extension, password, domain string) error {
-	cmd := fmt.Sprintf("sofia profile internal register sip:%s@%s", sanitizeParam(extension), sanitizeParam(domain))
-	_, err := c.SendCommand(ctx, cmd)
-	return err
+	cmd := fmt.Sprintf("sofia_contact */%s@%s", sanitizeParam(extension), sanitizeParam(domain))
+	resp, err := c.SendCommand(ctx, cmd)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(resp, "error") {
+		return fmt.Errorf("esl: extension %s@%s not registered", extension, domain)
+	}
+	return nil
 }
 
 // OriginateToPhone bridges a call to an external phone number (field mode).
@@ -356,14 +387,19 @@ func (c *Client) FlashSMS(ctx context.Context, from, to, message string) error {
 }
 
 func (c *Client) Close() {
+	if !atomic.CompareAndSwapInt32(&c.closed, 0, 1) {
+		return
+	}
+	// Drain pool and close TCP connections.
+	// Do NOT close the channel — Release() may still send after this returns.
+	// The channel will be GC'd when the Client is no longer referenced.
 	for {
 		select {
 		case cn := <-c.pool:
-			if cn.tcpConn != nil {
+			if cn != nil && cn.tcpConn != nil {
 				cn.tcpConn.Close()
 			}
 		default:
-			close(c.pool)
 			return
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -74,9 +75,17 @@ func (m *MinIOClient) Download(ctx context.Context, objectName string) (io.ReadC
 	return obj, nil
 }
 
-// GetPresignedURL returns a temporary download URL.
+// GetPresignedURL returns a temporary download URL valid for expirySec seconds
+// (capped to MinIO's max of 7 days). expirySec<=0 falls back to 15 minutes.
 func (m *MinIOClient) GetPresignedURL(ctx context.Context, objectName string, expirySec int) (string, error) {
-	u, err := m.client.PresignedGetObject(ctx, m.bucket, objectName, 0, nil)
+	expiry := time.Duration(expirySec) * time.Second
+	if expirySec <= 0 {
+		expiry = 15 * time.Minute
+	}
+	if expiry > 7*24*time.Hour {
+		expiry = 7 * 24 * time.Hour
+	}
+	u, err := m.client.PresignedGetObject(ctx, m.bucket, objectName, expiry, nil)
 	if err != nil {
 		return "", fmt.Errorf("minio: presign %s: %w", objectName, err)
 	}

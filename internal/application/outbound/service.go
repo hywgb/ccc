@@ -3,6 +3,7 @@ package outbound
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/divord97/ccc/internal/domain/call"
 	"github.com/divord97/ccc/internal/domain/integration"
@@ -113,7 +114,9 @@ func (s *Service) DialInternal(ctx context.Context, req InternalDialRequest) (*c
 	// ESL bridge internal call
 	if s.eslClient != nil {
 		go func() {
-			_, _ = s.eslClient.Originate(context.Background(), fmt.Sprintf("user/%s", req.CalleeExt), req.CallerExt, "default")
+			eslCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			_, _ = s.eslClient.Originate(eslCtx, fmt.Sprintf("user/%s", req.CalleeExt), req.CallerExt, "default")
 		}()
 	}
 

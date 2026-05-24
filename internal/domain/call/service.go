@@ -723,6 +723,9 @@ func (s *CallService) MonitorCall(ctx context.Context, tenantID, targetCallID, s
 	}
 
 	if err := s.calls.Create(ctx, monitor); err != nil {
+		if s.tp != nil && monitor.ChannelUUID != "" {
+			_ = s.tp.Hangup(ctx, monitor.ChannelUUID)
+		}
 		return nil, err
 	}
 
@@ -774,6 +777,9 @@ func (s *CallService) CoachCall(ctx context.Context, tenantID, targetCallID, coa
 	}
 
 	if err := s.calls.Create(ctx, coach); err != nil {
+		if s.tp != nil && coach.ChannelUUID != "" {
+			_ = s.tp.Hangup(ctx, coach.ChannelUUID)
+		}
 		return nil, err
 	}
 

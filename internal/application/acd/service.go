@@ -253,6 +253,8 @@ func (s *Service) dispatchOne(ctx context.Context, sgID int64) {
 		s.releaseClaim(ctx, agentID)
 		// Requeue with original score (preserves priority window + original
 		// enqueue timestamp) so a transient failure doesn't demote the call.
+		// member carries the enqueue timestamp suffix so expireQueued can
+		// still tell how long the call has been waiting overall.
 		_ = s.rdb.ZAdd(ctx, queueKey(sgID), redis.Z{Score: head[0].Score, Member: member}).Err()
 		return
 	}
