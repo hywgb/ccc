@@ -109,7 +109,7 @@ func (c *Client) connect(cn *conn) error {
 		cn.reader = nil
 	}
 
-	addr := fmt.Sprintf("%s:%d", c.host, c.port)
+	addr := net.JoinHostPort(c.host, strconv.Itoa(c.port))
 	c.logger.Debug().Int("conn_id", cn.id).Str("host", addr).Msg("connecting to FreeSWITCH ESL")
 
 	tcpConn, err := net.DialTimeout("tcp", addr, 10*time.Second)
