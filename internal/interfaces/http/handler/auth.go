@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -57,7 +58,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	claims := jwt.MapClaims{
-		"sub":       user.ID,
+		"sub":       fmt.Sprintf("%d", user.ID),
 		"tenant_id": user.TenantID,
 		"user_id":   user.ID,
 		"role":      string(user.Role),

@@ -698,7 +698,7 @@ func NewRouter(deps RouterDeps) *chi.Mux {
 	// Webchat alias (frontend uses /api/v1/webchat/sessions)
 	r.Route("/api/v1/webchat", func(r chi.Router) {
 		r.Post("/sessions", deps.WidgetHandler.CreateSession)
-		r.Get("/sessions/{id}/messages", deps.WidgetHandler.SendMessage)
+		r.Get("/sessions/{id}/messages", deps.WidgetHandler.ListMessages)
 		r.Post("/sessions/{id}/messages", deps.WidgetHandler.SendMessage)
 	})
 
