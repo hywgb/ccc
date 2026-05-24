@@ -153,6 +153,7 @@ type Recording struct {
 	DurationSec int      `db:"duration_sec" json:"duration_sec"`
 	MimeType    string    `db:"mime_type" json:"mime_type"`
 	StorageTier string   `db:"storage_tier" json:"storage_tier"`
+	Consent     bool      `db:"consent" json:"consent"`
 	Status      string    `db:"status" json:"status"`
 	CreatedAt   time.Time `db:"created_at" json:"created_at"`
 }
@@ -188,6 +189,7 @@ type CallbackRequest struct {
 	SkillGroupID  int64     `db:"skill_group_id" json:"skill_group_id"`
 	Caller        string    `db:"caller" json:"caller"`
 	Status        string    `db:"status" json:"status"`
+	MaxAttempts   int       `db:"max_attempts" json:"max_attempts"`
 	ScheduledAt   *time.Time `db:"scheduled_at" json:"scheduled_at,omitempty"`
 	AttemptCount  int       `db:"attempt_count" json:"attempt_count"`
 	LastAttemptAt *time.Time `db:"last_attempt_at" json:"last_attempt_at,omitempty"`

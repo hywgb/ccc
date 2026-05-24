@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -102,10 +103,9 @@ func (s *Service) deliverToConfig(ctx context.Context, cfg *integration.WebhookC
 		}
 
 		respStatus = resp.StatusCode
-		buf := make([]byte, 1024)
-		n, _ := resp.Body.Read(buf)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		resp.Body.Close()
-		respBody = string(buf[:n])
+		respBody = string(body)
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			success = true

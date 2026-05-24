@@ -80,20 +80,17 @@ func (s *Service) BuildURLs(ctx context.Context, tenantID int64, info CallInfo) 
 }
 
 func (s *Service) substitute(tmpl string, info CallInfo) string {
-	r := strings.NewReplacer(
+	pairs := []string{
 		"${call_id}", fmt.Sprintf("%d", info.CallID),
 		"${caller}", info.Caller,
 		"${callee}", info.Callee,
 		"${direction}", info.Direction,
-	)
-	if info.SkillGroupID != nil {
-		r = strings.NewReplacer(
-			"${call_id}", fmt.Sprintf("%d", info.CallID),
-			"${caller}", info.Caller,
-			"${callee}", info.Callee,
-			"${direction}", info.Direction,
-			"${skill_group_id}", fmt.Sprintf("%d", *info.SkillGroupID),
-		)
 	}
-	return r.Replace(tmpl)
+	if info.SkillGroupID != nil {
+		pairs = append(pairs, "${skill_group_id}", fmt.Sprintf("%d", *info.SkillGroupID))
+	}
+	if info.AgentUserID != nil {
+		pairs = append(pairs, "${agent_user_id}", fmt.Sprintf("%d", *info.AgentUserID))
+	}
+	return strings.NewReplacer(pairs...).Replace(tmpl)
 }

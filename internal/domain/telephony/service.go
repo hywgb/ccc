@@ -11,16 +11,44 @@ import (
 
 // RoutingService matches outbound calls to SIP trunks via RoutingRules.
 type RoutingService struct {
-	rules RoutingRuleRepository
+	rules        RoutingRuleRepository
+	mu           sync.RWMutex
+	cache        []*RoutingRule
+	cacheTenant  int64
+	cacheExpires time.Time
 }
 
 func NewRoutingService(rules RoutingRuleRepository) *RoutingService {
 	return &RoutingService{rules: rules}
 }
 
+const routingCacheTTL = 10 * time.Second
+
+func (s *RoutingService) getCachedRules(ctx context.Context, tenantID int64) ([]*RoutingRule, error) {
+	s.mu.RLock()
+	if s.cacheTenant == tenantID && time.Now().Before(s.cacheExpires) {
+		rules := s.cache
+		s.mu.RUnlock()
+		return rules, nil
+	}
+	s.mu.RUnlock()
+
+	rules, err := s.rules.ListActive(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	s.mu.Lock()
+	s.cache = rules
+	s.cacheTenant = tenantID
+	s.cacheExpires = time.Now().Add(routingCacheTTL)
+	s.mu.Unlock()
+	return rules, nil
+}
+
 // MatchRule finds the highest-priority active rule matching the callee number and current time.
 func (s *RoutingService) MatchRule(ctx context.Context, tenantID int64, callee string) (*RoutingRule, error) {
-	rules, err := s.rules.ListActive(ctx, tenantID)
+	rules, err := s.getCachedRules(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -133,18 +161,26 @@ func (s *CLIPolicyService) SelectCLI(ctx context.Context, tenantID int64, policy
 		if len(pool) == 0 {
 			return nil, ErrNoCLINumber
 		}
-		// Try to match area code prefix
+		// Batch-load all numbers in the pool
+		numbers := make([]*PhoneNumber, 0, len(pool))
 		for _, pid := range pool {
 			pn, err := s.phones.GetByID(ctx, pid)
 			if err != nil || pn == nil {
 				continue
 			}
+			numbers = append(numbers, pn)
+		}
+		if len(numbers) == 0 {
+			return nil, ErrNoCLINumber
+		}
+		// Try to match area code prefix from preloaded numbers
+		for _, pn := range numbers {
 			if len(callee) >= 4 && len(pn.Number) >= 4 && pn.Number[:4] == callee[:4] {
 				return pn, nil
 			}
 		}
 		// Fallback to first number
-		return s.phones.GetByID(ctx, pool[0])
+		return numbers[0], nil
 
 	default:
 		return nil, ErrNoCLIPolicy
@@ -224,6 +260,23 @@ func (s *TrunkHealthService) SelectHealthyTrunk(ctx context.Context, groupID int
 		return trunk, nil
 	}
 	return nil, ErrNoHealthyTrunk
+}
+
+// ValidateE164 checks that a phone number follows E.164 format: +<digits>, 7-15 digits.
+func ValidateE164(number string) error {
+	if len(number) < 2 || number[0] != '+' {
+		return ErrInvalidPhoneFormat
+	}
+	digits := number[1:]
+	if len(digits) < 7 || len(digits) > 15 {
+		return ErrInvalidPhoneFormat
+	}
+	for _, c := range digits {
+		if c < '0' || c > '9' {
+			return ErrInvalidPhoneFormat
+		}
+	}
+	return nil
 }
 
 func parseNumberPool(ids string) []int64 {

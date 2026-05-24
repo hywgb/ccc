@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -237,7 +238,10 @@ func (h *SMSHandler) Handle(ctx context.Context, sess *Session, node routing.Flo
 }
 
 // SubFlowHandler invokes another IVR flow as a sub-flow.
-type SubFlowHandler struct{}
+type SubFlowHandler struct {
+	engine     *Engine
+	flowLoader func(ctx context.Context, flowID int64) (*routing.FlowGraph, error)
+}
 
 type subFlowConfig struct {
 	FlowID     string            `json:"flow_id"`
@@ -245,7 +249,7 @@ type subFlowConfig struct {
 	OutputVars []string          `json:"output_variables"`
 }
 
-func (h *SubFlowHandler) Handle(_ context.Context, sess *Session, node routing.FlowNode) (string, error) {
+func (h *SubFlowHandler) Handle(ctx context.Context, sess *Session, node routing.FlowNode) (string, error) {
 	var cfg subFlowConfig
 	_ = parseConfig(node.Config, &cfg)
 
@@ -253,6 +257,41 @@ func (h *SubFlowHandler) Handle(_ context.Context, sess *Session, node routing.F
 		sess.Variables["subflow_"+k] = interpolateVars(v, sess.Variables)
 	}
 	sess.Variables["subflow_id"] = cfg.FlowID
+
+	if h.engine == nil || h.flowLoader == nil {
+		return "default", nil
+	}
+
+	flowID, err := strconv.ParseInt(cfg.FlowID, 10, 64)
+	if err != nil {
+		return "error", nil
+	}
+	graph, err := h.flowLoader(ctx, flowID)
+	if err != nil {
+		return "error", nil
+	}
+
+	subSess := &Session{
+		CallID:    sess.CallID,
+		TenantID:  sess.TenantID,
+		FlowID:    flowID,
+		CallUUID:  sess.CallUUID,
+		ESL:       sess.ESL,
+		Variables: make(map[string]string),
+	}
+	for k, v := range sess.Variables {
+		subSess.Variables[k] = v
+	}
+
+	if err := h.engine.Execute(ctx, subSess, graph); err != nil {
+		return "error", nil
+	}
+
+	for _, name := range cfg.OutputVars {
+		if val, ok := subSess.Variables[name]; ok {
+			sess.Variables[name] = val
+		}
+	}
 	return "default", nil
 }
 

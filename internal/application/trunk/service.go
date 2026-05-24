@@ -3,19 +3,20 @@ package trunk
 import (
 	"context"
 	"fmt"
-	"net/http"
+	"strings"
 	"time"
 
 	"github.com/divord97/ccc/internal/domain/telephony"
+	"github.com/divord97/ccc/internal/infrastructure/esl"
 	"github.com/rs/zerolog"
 )
 
-// HealthMonitor periodically sends SIP OPTIONS keepalive and manages failover.
+// HealthMonitor periodically checks SIP trunk status via FreeSWITCH ESL and manages failover.
 type HealthMonitor struct {
 	trunks    telephony.SIPTrunkRepository
 	healthSvc *telephony.TrunkHealthService
 	logger    zerolog.Logger
-	client    *http.Client
+	esl       *esl.Client
 	interval  time.Duration
 	stopCh    chan struct{}
 }
@@ -24,12 +25,13 @@ func NewHealthMonitor(
 	trunks telephony.SIPTrunkRepository,
 	healthSvc *telephony.TrunkHealthService,
 	logger zerolog.Logger,
+	eslClient *esl.Client,
 ) *HealthMonitor {
 	return &HealthMonitor{
 		trunks:    trunks,
 		healthSvc: healthSvc,
 		logger:    logger,
-		client:    &http.Client{Timeout: 5 * time.Second},
+		esl:       eslClient,
 		interval:  30 * time.Second,
 		stopCh:    make(chan struct{}),
 	}
@@ -80,16 +82,20 @@ func (m *HealthMonitor) checkAll(ctx context.Context, tenantID int64) {
 	}
 }
 
-// sendOPTIONS simulates a SIP OPTIONS keepalive check via HTTP.
+// sendOPTIONS checks SIP trunk status via FreeSWITCH ESL sofia commands.
 func (m *HealthMonitor) sendOPTIONS(t *telephony.SIPTrunk) bool {
-	url := fmt.Sprintf("http://%s:%d", t.Domain, 5060)
-	resp, err := m.client.Head(url)
+	if m.esl == nil {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	gatewayName := fmt.Sprintf("trunk_%d", t.ID)
+	resp, err := m.esl.SendCommand(ctx, fmt.Sprintf("sofia status gateway %s", gatewayName))
 	if err != nil {
-		m.logger.Debug().Int64("trunk_id", t.ID).Err(err).Msg("trunk OPTIONS failed")
+		m.logger.Debug().Int64("trunk_id", t.ID).Err(err).Msg("trunk ESL status check failed")
 		return false
 	}
-	resp.Body.Close()
-	return resp.StatusCode < 500
+	return (strings.Contains(resp, "REGED") && !strings.Contains(resp, "UNREGED")) || strings.Contains(resp, "NOREG")
 }
 
 // SelectTrunk picks a healthy trunk from a group with automatic failover.

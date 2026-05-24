@@ -4,16 +4,18 @@ import (
 	"context"
 	"time"
 
+	"github.com/divord97/ccc/internal/domain/integration"
 	"github.com/divord97/ccc/pkg/snowflake"
 )
 
 type CampaignService struct {
 	campaigns CampaignRepository
 	cases     CampaignCaseRepository
+	dncSvc    *integration.DNCService
 }
 
-func NewCampaignService(campaigns CampaignRepository, cases CampaignCaseRepository) *CampaignService {
-	return &CampaignService{campaigns: campaigns, cases: cases}
+func NewCampaignService(campaigns CampaignRepository, cases CampaignCaseRepository, dncSvc *integration.DNCService) *CampaignService {
+	return &CampaignService{campaigns: campaigns, cases: cases, dncSvc: dncSvc}
 }
 
 type CreateCampaignInput struct {
@@ -160,10 +162,32 @@ func (s *CampaignService) ImportCases(ctx context.Context, campaignID int64, inp
 		return ErrCampaignNotFound
 	}
 
+	var blocked map[string]bool
+	if s.dncSvc != nil {
+		numbers := make([]string, 0, len(inputs))
+		for _, in := range inputs {
+			if in.PhoneNumber != "" {
+				numbers = append(numbers, in.PhoneNumber)
+			}
+		}
+		if len(numbers) > 0 {
+			blockedList, _ := s.dncSvc.CheckBatch(ctx, c.TenantID, numbers)
+			if len(blockedList) > 0 {
+				blocked = make(map[string]bool, len(blockedList))
+				for _, n := range blockedList {
+					blocked[n] = true
+				}
+			}
+		}
+	}
+
 	now := time.Now()
 	var validCases []*CampaignCase
 	for _, in := range inputs {
 		if in.PhoneNumber == "" {
+			continue
+		}
+		if blocked[in.PhoneNumber] {
 			continue
 		}
 		validCases = append(validCases, &CampaignCase{
@@ -227,8 +251,11 @@ func (s *CampaignService) MarkCaseCompleted(ctx context.Context, caseID int64, d
 	c, _ := s.campaigns.GetByID(ctx, cs.CampaignID)
 	if c != nil {
 		c.CompletedCases++
-		c.SuccessCases++
+		if durationSec > 0 {
+			c.SuccessCases++
+		}
 		c.UpdatedAt = now
+		s.autoComplete(c, now)
 		_ = s.campaigns.Update(ctx, c)
 	}
 	return cs, nil
@@ -259,6 +286,7 @@ func (s *CampaignService) MarkCaseFailed(ctx context.Context, caseID int64) (*Ca
 			c.CompletedCases++
 			c.FailedCases++
 			c.UpdatedAt = now
+			s.autoComplete(c, now)
 			_ = s.campaigns.Update(ctx, c)
 		}
 	} else {
@@ -271,6 +299,13 @@ func (s *CampaignService) MarkCaseFailed(ctx context.Context, caseID int64) (*Ca
 		return nil, err
 	}
 	return cs, nil
+}
+
+func (s *CampaignService) autoComplete(c *Campaign, now time.Time) {
+	if c.Status == CampaignStatusRunning && c.TotalCases > 0 && c.CompletedCases >= c.TotalCases {
+		c.Status = CampaignStatusCompleted
+		c.CompletedAt = &now
+	}
 }
 
 func (s *CampaignService) DialCase(ctx context.Context, campaignID, caseID int64) error {

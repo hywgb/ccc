@@ -95,6 +95,7 @@ func (s *CustomerService) Create(ctx context.Context, in CreateCustomerInput) (*
 
 	for _, p := range in.Phones {
 		phone := &CustomerPhone{
+			ID:         snowflake.NextID(),
 			CustomerID: c.ID,
 			PhoneType:  p.PhoneType,
 			Number:     p.Number,
@@ -147,6 +148,9 @@ func (s *CustomerService) Delete(ctx context.Context, id int64) error {
 	if err := s.phones.DeleteByCustomer(ctx, id); err != nil {
 		return err
 	}
+	if err := s.interactions.DeleteByCustomer(ctx, id); err != nil {
+		return err
+	}
 	return s.customers.Delete(ctx, id)
 }
 
@@ -182,6 +186,7 @@ func (s *CustomerService) ListPhones(ctx context.Context, customerID int64) ([]*
 
 func (s *CustomerService) RecordInteraction(ctx context.Context, in RecordInteractionInput) error {
 	interaction := &CustomerInteraction{
+		ID:         snowflake.NextID(),
 		CustomerID: in.CustomerID,
 		TenantID:   in.TenantID,
 		Channel:    in.Channel,

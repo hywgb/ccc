@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/divord97/ccc/pkg/snowflake"
@@ -326,12 +327,14 @@ func (s *SkillGroupService) GetMembers(ctx context.Context, skillGroupID int64) 
 // --- AgentPresenceService ---
 
 type AgentPresenceService struct {
-	presence AgentPresenceRepository
-	logs     AgentPresenceLogRepository
+	presence  AgentPresenceRepository
+	logs      AgentPresenceLogRepository
+	acwTimers map[int64]func()
+	mu        sync.Mutex
 }
 
 func NewAgentPresenceService(pr AgentPresenceRepository, lr AgentPresenceLogRepository) *AgentPresenceService {
-	return &AgentPresenceService{presence: pr, logs: lr}
+	return &AgentPresenceService{presence: pr, logs: lr, acwTimers: make(map[int64]func())}
 }
 
 // validTransitions defines allowed state transitions.
@@ -396,6 +399,7 @@ func (s *AgentPresenceService) TransitionTo(ctx context.Context, agentID int64, 
 		return nil, ErrInvalidStateTransition
 	}
 	s.logTransition(ctx, p)
+	s.cancelACWTimer(agentID)
 	p.Status = newStatus
 	if newStatus != PresenceTalking {
 		p.SubState = SubStateNone
@@ -465,7 +469,43 @@ func (s *AgentPresenceService) SetACW(ctx context.Context, agentID int64, dispos
 	if err := s.presence.Upsert(ctx, p); err != nil {
 		return nil, err
 	}
+
+	if p.ACWSeconds > 0 {
+		s.scheduleACWTimeout(agentID, p.ACWSeconds)
+	}
 	return p, nil
+}
+
+func (s *AgentPresenceService) cancelACWTimer(agentID int64) {
+	s.mu.Lock()
+	if cancel, ok := s.acwTimers[agentID]; ok {
+		cancel()
+		delete(s.acwTimers, agentID)
+	}
+	s.mu.Unlock()
+}
+
+func (s *AgentPresenceService) scheduleACWTimeout(agentID int64, seconds int) {
+	s.mu.Lock()
+	if cancel, ok := s.acwTimers[agentID]; ok {
+		cancel()
+	}
+	stopCh := make(chan struct{})
+	s.acwTimers[agentID] = func() { close(stopCh) }
+	s.mu.Unlock()
+
+	go func() {
+		select {
+		case <-time.After(time.Duration(seconds) * time.Second):
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_, _ = s.TransitionTo(ctx, agentID, PresenceIdle)
+		case <-stopCh:
+		}
+		s.mu.Lock()
+		delete(s.acwTimers, agentID)
+		s.mu.Unlock()
+	}()
 }
 
 func (s *AgentPresenceService) GetPresence(ctx context.Context, agentID int64) (*AgentPresence, error) {
