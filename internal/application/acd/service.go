@@ -192,8 +192,11 @@ func (s *Service) dispatchOne(ctx context.Context, sgID int64) {
 	if _, err := s.lifecycle.TransitionCallToRinging(ctx, callID, agentID); err != nil {
 		s.logger.Warn().Err(err).Int64("call_id", callID).Int64("agent_id", agentID).Msg("acd: transition to ringing failed")
 		s.releaseClaim(ctx, agentID)
-		// best-effort requeue so the call is not lost
-		_ = s.rdb.ZAdd(ctx, queueKey(sgID), redis.Z{Score: scoreFor(0, time.Now()), Member: callIDStr}).Err()
+		// best-effort requeue with original priority so a transient failure
+		// does not demote a high-priority call. We keep the original score
+		// (priority window + original enqueue timestamp) which preserves both
+		// ordering and FIFO-within-priority semantics.
+		_ = s.rdb.ZAdd(ctx, queueKey(sgID), redis.Z{Score: head[0].Score, Member: callIDStr}).Err()
 		return
 	}
 	s.logger.Info().Int64("call_id", callID).Int64("agent_id", agentID).Int64("sg", sgID).Msg("acd: routed call to agent")
