@@ -19,6 +19,7 @@ type CallListFilter struct {
 type CallRepository interface {
 	Create(ctx context.Context, c *Call) error
 	GetByID(ctx context.Context, id int64) (*Call, error)
+	GetByChannelUUID(ctx context.Context, channelUUID string) (*Call, error)
 	Update(ctx context.Context, c *Call) error
 	List(ctx context.Context, tenantID int64, offset, limit int) ([]*Call, int64, error)
 	ListWithFilter(ctx context.Context, tenantID int64, filter CallListFilter, offset, limit int) ([]*Call, int64, error)

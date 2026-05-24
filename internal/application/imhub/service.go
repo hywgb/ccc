@@ -74,6 +74,13 @@ func (h *Hub) Unregister(c *Client) {
 	close(c.Send)
 }
 
+// BroadcastEvent fans an IM event out to every client subscribed to the
+// session. It satisfies handler.IMBroadcaster, keeping the wire format
+// (`{"type", "session_id", "payload"}`) identical to what arrives over WS.
+func (h *Hub) BroadcastEvent(sessionID int64, eventType string, payload interface{}) {
+	h.Broadcast(sessionID, IMEvent{Type: eventType, SessionID: sessionID, Payload: payload})
+}
+
 // Broadcast sends an event to all clients in a session.
 func (h *Hub) Broadcast(sessionID int64, event IMEvent) {
 	data, err := json.Marshal(event)

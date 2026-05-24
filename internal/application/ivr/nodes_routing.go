@@ -8,20 +8,31 @@ import (
 	"github.com/divord97/ccc/internal/domain/routing"
 )
 
-// TransferToAgentHandler routes the call to a skill group / specific agent via ESL.
-type TransferToAgentHandler struct{}
+// ACDEnqueuer hands a call off to the ACD dispatcher for skill-group queuing.
+// When non-nil, TransferToAgentHandler calls Enqueue instead of asking
+// FreeSWITCH's (often unavailable) mod_callcenter to do the routing.
+type ACDEnqueuer interface {
+	Enqueue(ctx context.Context, callID, skillGroupID int64, priority int) error
+}
+
+// TransferToAgentHandler routes the call to a skill group / specific agent.
+// When an ACDEnqueuer is configured it is the source of truth; otherwise the
+// handler falls back to the legacy `callcenter:` dialplan transfer.
+type TransferToAgentHandler struct {
+	ACD ACDEnqueuer
+}
 
 type transferAgentConfig struct {
-	SkillGroupID        string `json:"skill_group_id"`
-	RoutingStrategy     string `json:"routing_strategy"`
-	QueuePriority       int    `json:"queue_priority"`
-	QueueMusicID        string `json:"queue_music_id"`
-	MaxWaitSeconds      int    `json:"max_wait_seconds"`
-	EWTAnnounceInterval int    `json:"ewt_announce_interval"`
-	CallbackEnabled     bool   `json:"callback_enabled"`
-	CallbackThresholdSec int   `json:"callback_threshold_seconds"`
-	WhisperEnabled      bool   `json:"whisper_enabled"`
-	WhisperAudio        string `json:"whisper_audio"`
+	SkillGroupID         string `json:"skill_group_id"`
+	RoutingStrategy      string `json:"routing_strategy"`
+	QueuePriority        int    `json:"queue_priority"`
+	QueueMusicID         string `json:"queue_music_id"`
+	MaxWaitSeconds       int    `json:"max_wait_seconds"`
+	EWTAnnounceInterval  int    `json:"ewt_announce_interval"`
+	CallbackEnabled      bool   `json:"callback_enabled"`
+	CallbackThresholdSec int    `json:"callback_threshold_seconds"`
+	WhisperEnabled       bool   `json:"whisper_enabled"`
+	WhisperAudio         string `json:"whisper_audio"`
 }
 
 func (h *TransferToAgentHandler) Handle(ctx context.Context, sess *Session, node routing.FlowNode) (string, error) {
@@ -32,13 +43,20 @@ func (h *TransferToAgentHandler) Handle(ctx context.Context, sess *Session, node
 	sess.Variables["transfer_strategy"] = cfg.RoutingStrategy
 	sess.Variables["queue_priority"] = strconv.Itoa(cfg.QueuePriority)
 
-	if sess.ESL != nil && sess.CallUUID != "" {
-		// Play queue music while waiting
-		if cfg.QueueMusicID != "" {
-			_ = sess.ESL.PlayAudio(ctx, sess.CallUUID, cfg.QueueMusicID)
-		}
+	if sess.ESL != nil && sess.CallUUID != "" && cfg.QueueMusicID != "" {
+		_ = sess.ESL.PlayAudio(ctx, sess.CallUUID, cfg.QueueMusicID)
+	}
 
-		// Transfer to the fifo/callcenter queue for ACD distribution
+	sgID, _ := strconv.ParseInt(cfg.SkillGroupID, 10, 64)
+	if h.ACD != nil && sgID > 0 && sess.CallID > 0 {
+		if err := h.ACD.Enqueue(ctx, sess.CallID, sgID, cfg.QueuePriority); err != nil {
+			sess.Variables["transfer_error"] = err.Error()
+			return "error", nil
+		}
+		return "success", nil
+	}
+
+	if sess.ESL != nil && sess.CallUUID != "" {
 		dest := fmt.Sprintf("callcenter:%s@default", cfg.SkillGroupID)
 		if err := sess.ESL.TransferCall(ctx, sess.CallUUID, dest); err != nil {
 			sess.Variables["transfer_error"] = err.Error()

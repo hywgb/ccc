@@ -13,6 +13,8 @@ type Config struct {
 	Snowflake   SnowflakeConfig
 	Aliyun      AliyunConfig
 	FreeSWITCH  FreeSWITCHConfig
+	ServiceAuth ServiceAuthConfig
+	Storage     StorageConfig
 }
 
 type FreeSWITCHConfig struct {
@@ -39,6 +41,23 @@ type RedisConfig struct {
 type JWTConfig struct {
 	Secret string
 	Issuer string
+}
+
+// ServiceAuthConfig holds the HMAC secret used to authenticate internal
+// service-to-service calls such as FreeSWITCH webhook callbacks into the
+// API server. When empty, the /internal/v1 endpoints reject every request.
+type ServiceAuthConfig struct {
+	Secret string
+}
+
+// StorageConfig points the recording subsystem at an S3-compatible object
+// store (typically MinIO in dev, AWS S3 in prod).
+type StorageConfig struct {
+	Endpoint  string
+	AccessKey string
+	SecretKey string
+	Bucket    string
+	UseSSL    bool
 }
 
 type SnowflakeConfig struct {
@@ -82,6 +101,16 @@ func Load() *Config {
 			Port:     envOrInt("FREESWITCH_PORT", 8021),
 			Password: envOr("FREESWITCH_PASSWORD", "ClueCon"),
 			PoolSize: envOrInt("FREESWITCH_POOL_SIZE", 5),
+		},
+		ServiceAuth: ServiceAuthConfig{
+			Secret: envOr("SERVICE_AUTH_SECRET", ""),
+		},
+		Storage: StorageConfig{
+			Endpoint:  envOr("STORAGE_ENDPOINT", ""),
+			AccessKey: envOr("STORAGE_ACCESS_KEY", ""),
+			SecretKey: envOr("STORAGE_SECRET_KEY", ""),
+			Bucket:    envOr("STORAGE_BUCKET", "ccc-recordings"),
+			UseSSL:    envOr("STORAGE_USE_SSL", "false") == "true",
 		},
 		Aliyun: AliyunConfig{
 			AccessKeyID:     firstEnv("ALIBABA_CLOUD_ACCESS_KEY_ID", "ALIBABA_ACCESS_KEY_ID", "ALIYUN_ACCESS_KEY_ID"),

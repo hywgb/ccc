@@ -94,21 +94,21 @@ type RouterDeps struct {
 	TTSHandler *handler.TTSHandler
 
 	// Advanced AI
-	CommAgentSvc   *ai.CommAgentService
-	VoiceSvc       *ai.VoiceProfileService
-	AnalysisSvc    *ai.ConversationAnalysisService
-	TrainingSvc    *ai.TrainingService
-	RingSvc        *ai.RingAnalysisService
-	FullDuplexSvc  *ai.FullDuplexService
-	AdvancedAISvc  *advancedai.Service
+	CommAgentSvc  *ai.CommAgentService
+	VoiceSvc      *ai.VoiceProfileService
+	AnalysisSvc   *ai.ConversationAnalysisService
+	TrainingSvc   *ai.TrainingService
+	RingSvc       *ai.RingAnalysisService
+	FullDuplexSvc *ai.FullDuplexService
+	AdvancedAISvc *advancedai.Service
 
 	// Config
-	BreakReasonHandler      *handler.BreakReasonHandler
-	DispositionCodeHandler  *handler.DispositionCodeHandler
-	AudioFileHandler        *handler.AudioFileHandler
-	BusinessHoursHandler    *handler.BusinessHoursHandler
-	CallTagDefHandler       *handler.CallTagDefHandler
-	AuditLogHandler         *handler.AuditLogHandler
+	BreakReasonHandler     *handler.BreakReasonHandler
+	DispositionCodeHandler *handler.DispositionCodeHandler
+	AudioFileHandler       *handler.AudioFileHandler
+	BusinessHoursHandler   *handler.BusinessHoursHandler
+	CallTagDefHandler      *handler.CallTagDefHandler
+	AuditLogHandler        *handler.AuditLogHandler
 
 	// Social Channels
 	SocialChannelHandler *handler.SocialChannelHandler
@@ -131,10 +131,11 @@ type RouterDeps struct {
 	TranscriptHub *transcripthub.Hub
 
 	// Infrastructure
-	RateLimiter  *redis.RateLimiter
-	AuditLogRepo platform.AuditLogRepository
-	JWTSecret    string
-	Logger       zerolog.Logger
+	RateLimiter       *redis.RateLimiter
+	AuditLogRepo      platform.AuditLogRepository
+	JWTSecret         string
+	ServiceAuthSecret string
+	Logger            zerolog.Logger
 }
 
 func NewRouter(deps RouterDeps) *chi.Mux {
@@ -386,7 +387,6 @@ func NewRouter(deps RouterDeps) *chi.Mux {
 		// --- Phase 5 Routes ---
 
 		// Advanced call control (added to existing /calls route)
-		r.Post("/calls/inbound", deps.CallControlHandler.InboundCall)
 		r.Post("/calls/{id}/queue", deps.CallControlHandler.TransitionToQueue)
 		r.Post("/calls/{id}/ring", deps.CallControlHandler.TransitionToRinging)
 		r.Post("/calls/{id}/disposition", deps.CallControlHandler.SetDisposition)
@@ -759,6 +759,14 @@ func NewRouter(deps RouterDeps) *chi.Mux {
 	})
 
 	r.Post("/api/v1/email/inbound", deps.EmailInboundHandler.Inbound)
+
+	// --- Internal service-to-service routes (HMAC, not JWT). ---
+	// FreeSWITCH and other backend services authenticate via X-CCC-Service-Token
+	// instead of carrying user JWTs they cannot obtain.
+	r.Route("/internal/v1", func(r chi.Router) {
+		r.Use(middleware.ServiceAuth(deps.ServiceAuthSecret))
+		r.Post("/calls/inbound", deps.CallControlHandler.InboundCall)
+	})
 
 	// --- Social Channel Webhooks (public, no JWT) ---
 	r.Route("/api/v1/social", func(r chi.Router) {

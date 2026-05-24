@@ -27,6 +27,20 @@ func (r *MockCallRepo) GetByID(_ context.Context, id int64) (*Call, error) {
 	return r.calls[id], nil
 }
 
+func (r *MockCallRepo) GetByChannelUUID(_ context.Context, channelUUID string) (*Call, error) {
+	if channelUUID == "" {
+		return nil, nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, c := range r.calls {
+		if c.ChannelUUID == channelUUID {
+			return c, nil
+		}
+	}
+	return nil, nil
+}
+
 func (r *MockCallRepo) Update(_ context.Context, c *Call) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

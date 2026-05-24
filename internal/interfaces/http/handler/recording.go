@@ -1,8 +1,13 @@
 package handler
 
 import (
+	"context"
+	"fmt"
+	"io"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/divord97/ccc/internal/domain/call"
 	"github.com/divord97/ccc/internal/interfaces/http/middleware"
@@ -11,12 +16,25 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// RecordingStore is the subset of the object storage client RecordingHandler needs.
+type RecordingStore interface {
+	Download(ctx context.Context, objectName string) (io.ReadCloser, error)
+	GetPresignedURL(ctx context.Context, objectName string, expirySec int) (string, error)
+}
+
 type RecordingHandler struct {
-	repo call.RecordingRepository
+	repo  call.RecordingRepository
+	store RecordingStore
 }
 
 func NewRecordingHandler(repo call.RecordingRepository) *RecordingHandler {
 	return &RecordingHandler{repo: repo}
+}
+
+// SetStore wires the object storage backend used by Stream/Download. When the
+// store is nil, those endpoints return 501 (preserving previous behaviour).
+func (h *RecordingHandler) SetStore(s RecordingStore) {
+	h.store = s
 }
 
 func (h *RecordingHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -47,13 +65,62 @@ func (h *RecordingHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RecordingHandler) Stream(w http.ResponseWriter, r *http.Request) {
-	// In production: stream audio file from MinIO/local storage
-	response.Error(w, http.StatusNotImplemented, "streaming requires storage integration")
+	rec, ok := h.loadForServing(w, r)
+	if !ok {
+		return
+	}
+	h.serveObject(w, r, rec, false)
 }
 
 func (h *RecordingHandler) Download(w http.ResponseWriter, r *http.Request) {
-	// In production: serve file download from MinIO/local storage
-	response.Error(w, http.StatusNotImplemented, "download requires storage integration")
+	rec, ok := h.loadForServing(w, r)
+	if !ok {
+		return
+	}
+	h.serveObject(w, r, rec, true)
+}
+
+func (h *RecordingHandler) loadForServing(w http.ResponseWriter, r *http.Request) (*call.Recording, bool) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid id")
+		return nil, false
+	}
+	rec, err := h.repo.GetByID(r.Context(), id)
+	if err != nil || rec == nil {
+		response.Error(w, http.StatusNotFound, "recording not found")
+		return nil, false
+	}
+	if h.store == nil {
+		response.Error(w, http.StatusNotImplemented, "object storage not configured")
+		return nil, false
+	}
+	return rec, true
+}
+
+func (h *RecordingHandler) serveObject(w http.ResponseWriter, r *http.Request, rec *call.Recording, asAttachment bool) {
+	object := strings.TrimPrefix(rec.FilePath, "/")
+	rc, err := h.store.Download(r.Context(), object)
+	if err != nil {
+		response.Error(w, http.StatusBadGateway, fmt.Sprintf("fetch recording: %v", err))
+		return
+	}
+	defer rc.Close()
+
+	contentType := rec.MimeType
+	if contentType == "" {
+		contentType = "audio/wav"
+	}
+	w.Header().Set("Content-Type", contentType)
+	if asAttachment {
+		name := rec.FileName
+		if name == "" {
+			name = filepath.Base(object)
+		}
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, rc)
 }
 
 // VoicemailHandler
