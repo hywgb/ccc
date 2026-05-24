@@ -178,6 +178,19 @@ func main() {
 	}
 	imAssistSvc := imassist.NewService(llmProvider, logger)
 
+	// ASR/TTS Providers: use Aliyun NLS when credentials configured.
+	var asrProvider llm.ASRProvider
+	var ttsProvider llm.TTSProvider
+	if cfg.Aliyun.AccessKeyID != "" && cfg.Aliyun.NLSAppKey != "" {
+		asrProvider = llm.NewAliyunASRProvider(cfg.Aliyun.AccessKeyID, cfg.Aliyun.AccessKeySecret, cfg.Aliyun.NLSAppKey)
+		ttsProvider = llm.NewAliyunTTSProvider(cfg.Aliyun.AccessKeyID, cfg.Aliyun.AccessKeySecret, cfg.Aliyun.NLSAppKey)
+		logger.Info().Msg("ASR/TTS: using Aliyun NLS providers")
+	} else {
+		logger.Warn().Msg("ASR/TTS: ALIYUN_ACCESS_KEY_ID or ALIYUN_NLS_APP_KEY not set, ASR/TTS disabled")
+	}
+	_ = asrProvider
+	_ = ttsProvider
+
 	// --- Phase 9 Repositories ---
 	digitalEmployeeRepo := infraMySQL.NewDigitalEmployeeRepo(db)
 	digitalEmployeeSceneRepo := infraMySQL.NewDigitalEmployeeSceneRepo(db)
