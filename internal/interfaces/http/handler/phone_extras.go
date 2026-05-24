@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/divord97/ccc/internal/application/dialer"
 	"github.com/divord97/ccc/internal/domain/call"
 	"github.com/divord97/ccc/internal/domain/campaign"
 	"github.com/divord97/ccc/internal/domain/crm"
@@ -55,10 +56,11 @@ func (h *ScreenPopHandler) Lookup(w http.ResponseWriter, r *http.Request) {
 
 type PreviewCaseHandler struct {
 	campaignSvc *campaign.CampaignService
+	dialerSvc   *dialer.Service
 }
 
-func NewPreviewCaseHandler(campaignSvc *campaign.CampaignService) *PreviewCaseHandler {
-	return &PreviewCaseHandler{campaignSvc: campaignSvc}
+func NewPreviewCaseHandler(campaignSvc *campaign.CampaignService, dialerSvc *dialer.Service) *PreviewCaseHandler {
+	return &PreviewCaseHandler{campaignSvc: campaignSvc, dialerSvc: dialerSvc}
 }
 
 func (h *PreviewCaseHandler) Current(w http.ResponseWriter, r *http.Request) {
@@ -86,6 +88,10 @@ func (h *PreviewCaseHandler) DialCase(w http.ResponseWriter, r *http.Request) {
 	campaignID, _ := strconv.ParseInt(chi.URLParam(r, "campaignId"), 10, 64)
 	caseID, _ := strconv.ParseInt(chi.URLParam(r, "caseId"), 10, 64)
 	if err := h.campaignSvc.DialCase(r.Context(), campaignID, caseID); err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := h.dialerSvc.PreviewAccept(r.Context(), caseID); err != nil {
 		response.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}

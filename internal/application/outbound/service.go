@@ -82,13 +82,6 @@ func (s *Service) Dial(ctx context.Context, req DialRequest) (*call.Call, error)
 		return nil, fmt.Errorf("create call: %w", err)
 	}
 
-	// 5. ESL originate (async, errors logged)
-	if s.eslClient != nil && rule != nil {
-		go func() {
-			_, _ = s.eslClient.Originate(context.Background(), fmt.Sprintf("sofia/gateway/trunk_%d/%s", rule.SIPTrunkID, req.Callee), cli.Number, "default")
-		}()
-	}
-
 	return c, nil
 }
 

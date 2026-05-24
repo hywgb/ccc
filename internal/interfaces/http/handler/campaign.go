@@ -22,12 +22,12 @@ func NewCampaignHandler(svc *campaign.CampaignService, dialerSvc *dialer.Service
 }
 
 func (h *CampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
+	tenantID := middleware.TenantIDFromCtx(r.Context())
 	var in struct {
-		TenantID     int64               `json:"tenant_id"`
-		Name         string              `json:"name"`
+		Name         string               `json:"name"`
 		DialingMode  campaign.DialingMode `json:"dialing_mode"`
-		SkillGroupID int64               `json:"skill_group_id"`
-		CLIPolicyID  *int64              `json:"cli_policy_id"`
+		SkillGroupID int64                `json:"skill_group_id"`
+		CLIPolicyID  *int64               `json:"cli_policy_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
@@ -35,7 +35,7 @@ func (h *CampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c, err := h.svc.Create(r.Context(), campaign.CreateCampaignInput{
-		TenantID:     in.TenantID,
+		TenantID:     tenantID,
 		Name:         in.Name,
 		DialingMode:  in.DialingMode,
 		SkillGroupID: in.SkillGroupID,

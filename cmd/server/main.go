@@ -206,6 +206,15 @@ func main() {
 	outboundSvc := outbound.NewService(callSvc, routingSvc, cliSvc, dncSvc, eslClient)
 	csatSvc := csat.NewService(csatConfigRepo, csatResultRepo, logger)
 	dialerSvc := dialer.NewService(campaignSvc, eslClient, logger)
+	// Wire dialer to use outbound service for DNC/routing/CLI compliance
+	dialerSvc.SetDialFunc(func(ctx context.Context, tenantID int64, callee string, campaignID, caseID int64) error {
+		_, err := outboundSvc.Dial(ctx, outbound.DialRequest{
+			TenantID:  tenantID,
+			Callee:    callee,
+			MediaType: call.MediaTypeAudio,
+		})
+		return err
+	})
 	b2bSvc := b2b.NewService(callRepo, callEventRepo, eslClient, logger)
 	callbackSch := callback.NewScheduler(callbackRepo, callSvc, outboundSvc, logger)
 	screenPopSvc := screenpop.NewService(screenPopConfigRepo, customerSvc)
@@ -355,7 +364,7 @@ func main() {
 	// Phone Component Extra Handlers
 	supervisorHandler := handler.NewSupervisorHandler(callSvc)
 	screenPopHandler := handler.NewScreenPopHandler(customerSvc)
-	previewCaseHandler := handler.NewPreviewCaseHandler(campaignSvc)
+	previewCaseHandler := handler.NewPreviewCaseHandler(campaignSvc, dialerSvc)
 
 	// Auth Handler
 	authHandler := handler.NewAuthHandler(userRepo, cfg.JWT.Secret)
