@@ -133,6 +133,8 @@ func (s *CallService) EndCall(ctx context.Context, id int64, reason HangupReason
 
 	if c.AnsweredAt != nil {
 		c.WaitDurationSec = int(c.AnsweredAt.Sub(c.StartedAt).Seconds())
+	} else {
+		c.WaitDurationSec = int(now.Sub(c.StartedAt).Seconds())
 	}
 
 	if err := s.calls.Update(ctx, c); err != nil {
@@ -183,6 +185,14 @@ func (s *CallService) CreateOutboundCall(ctx context.Context, in CreateCallInput
 		SIPTrunkID:    in.SIPTrunkID,
 		Status:        CallStatusRinging,
 		StartedAt:     now,
+	}
+
+	if s.tp != nil {
+		uuid, origErr := s.tp.Originate(ctx, c.Callee, c.Caller, "default")
+		if origErr != nil {
+			return nil, origErr
+		}
+		c.ChannelUUID = uuid
 	}
 
 	if err := s.calls.Create(ctx, c); err != nil {
@@ -302,7 +312,9 @@ func (s *CallService) HoldCall(ctx context.Context, id int64) (*Call, error) {
 	c.Status = CallStatusHeld
 	c.HoldCount++
 	if s.tp != nil {
-		_ = s.tp.Hold(ctx, fmt.Sprintf("%d", c.ID))
+		if err := s.tp.Hold(ctx, c.ChannelUUID); err != nil {
+			return nil, fmt.Errorf("hold failed: %w", err)
+		}
 	}
 	if err := s.calls.Update(ctx, c); err != nil {
 		return nil, err
@@ -325,7 +337,9 @@ func (s *CallService) RetrieveCall(ctx context.Context, id int64) (*Call, error)
 	}
 	c.Status = CallStatusActive
 	if s.tp != nil {
-		_ = s.tp.Retrieve(ctx, fmt.Sprintf("%d", c.ID))
+		if err := s.tp.Retrieve(ctx, c.ChannelUUID); err != nil {
+			return nil, fmt.Errorf("retrieve failed: %w", err)
+		}
 	}
 	if err := s.calls.Update(ctx, c); err != nil {
 		return nil, err
@@ -363,7 +377,9 @@ func (s *CallService) BlindTransfer(ctx context.Context, id int64, target Transf
 		detail += ":" + target.ExternalNum
 	}
 	if s.tp != nil {
-		_ = s.tp.Transfer(ctx, fmt.Sprintf("%d", c.ID), detail)
+		if err := s.tp.Transfer(ctx, c.ChannelUUID, detail); err != nil {
+			return nil, fmt.Errorf("blind transfer failed: %w", err)
+		}
 	}
 
 	if err := s.calls.Update(ctx, c); err != nil {
@@ -394,7 +410,9 @@ func (s *CallService) SendDTMF(ctx context.Context, id int64, digits string) err
 		return ErrCallAlreadyEnded
 	}
 	if s.tp != nil {
-		_ = s.tp.SendDTMF(ctx, fmt.Sprintf("%d", c.ID), digits)
+		if err := s.tp.SendDTMF(ctx, c.ChannelUUID, digits); err != nil {
+			return fmt.Errorf("send DTMF failed: %w", err)
+		}
 	}
 	_ = s.events.Create(ctx, &CallEvent{
 		ID: snowflake.NextID(), CallID: c.ID, TenantID: c.TenantID,
@@ -451,6 +469,11 @@ func (s *CallService) AttendedTransfer(ctx context.Context, id int64, target Tra
 	detail := "attended:" + target.Type
 	if target.ExternalNum != "" {
 		detail += ":" + target.ExternalNum
+	}
+	if s.tp != nil {
+		if err := s.tp.Transfer(ctx, c.ChannelUUID, detail); err != nil {
+			return nil, fmt.Errorf("attended transfer failed: %w", err)
+		}
 	}
 
 	if err := s.calls.Update(ctx, c); err != nil {

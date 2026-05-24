@@ -342,7 +342,7 @@ var validTransitions = map[AgentPresenceStatus][]AgentPresenceStatus{
 	PresenceOffline: {PresenceOnline},
 	PresenceOnline:  {PresenceIdle, PresenceOffline},
 	PresenceIdle:    {PresenceDialing, PresenceTalking, PresenceBreak, PresenceOffline},
-	PresenceDialing: {PresenceTalking, PresenceACW, PresenceIdle},
+	PresenceDialing: {PresenceTalking, PresenceACW, PresenceIdle, PresenceOffline},
 	PresenceTalking: {PresenceACW, PresenceIdle, PresenceOffline},
 	PresenceACW:     {PresenceIdle, PresenceOffline},
 	PresenceBreak:   {PresenceIdle, PresenceOffline},
@@ -510,6 +510,10 @@ func (s *AgentPresenceService) scheduleACWTimeout(agentID int64, seconds int) {
 
 func (s *AgentPresenceService) GetPresence(ctx context.Context, agentID int64) (*AgentPresence, error) {
 	return s.presence.GetByAgentID(ctx, agentID)
+}
+
+func (s *AgentPresenceService) ListByTenant(ctx context.Context, tenantID int64) ([]*AgentPresence, error) {
+	return s.presence.ListByTenant(ctx, tenantID)
 }
 
 func (s *AgentPresenceService) logTransition(ctx context.Context, p *AgentPresence) {

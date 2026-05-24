@@ -106,7 +106,7 @@ func (s *CampaignService) Start(ctx context.Context, id int64) (*Campaign, error
 	if err != nil {
 		return nil, err
 	}
-	if pending == 0 && c.TotalCases == 0 {
+	if pending == 0 {
 		return nil, ErrCampaignNoCases
 	}
 
@@ -306,4 +306,33 @@ func (s *CampaignService) autoComplete(c *Campaign, now time.Time) {
 		c.Status = CampaignStatusCompleted
 		c.CompletedAt = &now
 	}
+}
+
+func (s *CampaignService) DialCase(ctx context.Context, campaignID, caseID int64) error {
+	cs, err := s.cases.GetByID(ctx, caseID)
+	if err != nil || cs == nil {
+		return ErrCaseNotFound
+	}
+	if cs.CampaignID != campaignID {
+		return ErrCaseNotFound
+	}
+	cs.Status = CaseStatusDialing
+	cs.AttemptCount++
+	cs.UpdatedAt = time.Now()
+	return s.cases.Update(ctx, cs)
+}
+
+func (s *CampaignService) SkipCase(ctx context.Context, campaignID, caseID int64) error {
+	cs, err := s.cases.GetByID(ctx, caseID)
+	if err != nil || cs == nil {
+		return ErrCaseNotFound
+	}
+	if cs.CampaignID != campaignID {
+		return ErrCaseNotFound
+	}
+	cs.Status = CaseStatusFailed
+	cs.UpdatedAt = time.Now()
+	now := time.Now()
+	cs.CompletedAt = &now
+	return s.cases.Update(ctx, cs)
 }
