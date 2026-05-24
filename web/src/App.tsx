@@ -25,6 +25,7 @@ import AsrHotwordsPage from './pages/ai/AsrHotwordsPage';
 import PerformancePage from './pages/ai/PerformancePage';
 import AnnotationPage from './pages/ai/AnnotationPage';
 import LlmModelPage from './pages/ai/LlmModelPage';
+import AdvancedAiPage from './pages/ai/AdvancedAiPage';
 import AgentReportPage from './pages/reports/AgentReportPage';
 import GroupAgentReportPage from './pages/reports/GroupAgentReportPage';
 import SkillGroupReportPage from './pages/reports/SkillGroupReportPage';
@@ -45,6 +46,8 @@ import QuickRepliesPage from './pages/settings/QuickRepliesPage';
 import CsatConfigPage from './pages/settings/CsatConfigPage';
 import AudioFilesPage from './pages/settings/AudioFilesPage';
 import AuditLogPage from './pages/settings/AuditLogPage';
+import SocialChannelPage from './pages/im/SocialChannelPage';
+import CampaignLiveDashboard from './pages/campaigns/CampaignLiveDashboard';
 import { useAuthStore } from './stores/auth';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -75,9 +78,11 @@ export default function App() {
             <Route path="voicemails" element={<VoicemailPage />} />
             {/* Campaign */}
             <Route path="campaigns" element={<CampaignPage />} />
+            <Route path="campaigns/live" element={<CampaignLiveDashboard />} />
             {/* IM */}
             <Route path="im/sessions" element={<ImSessionPage />} />
             <Route path="im/channels" element={<ImChannelPage />} />
+            <Route path="im/social" element={<SocialChannelPage />} />
             {/* Business */}
             <Route path="crm/customers" element={<CustomerPage />} />
             <Route path="tickets" element={<TicketListPage />} />
@@ -98,6 +103,7 @@ export default function App() {
             <Route path="ai/performance" element={<PerformancePage />} />
             <Route path="ai/annotations" element={<AnnotationPage />} />
             <Route path="ai/llm-models" element={<LlmModelPage />} />
+            <Route path="ai/advanced" element={<AdvancedAiPage />} />
             {/* Settings */}
             <Route path="settings/tenant" element={<TenantSettingsPage />} />
             <Route path="settings/break-reasons" element={<BreakReasonsPage />} />

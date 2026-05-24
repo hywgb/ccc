@@ -46,6 +46,9 @@ interface FunnelData {
   ivr_completed: number;
   to_agent: number;
   to_bot: number;
+  full_service: number;
+  half_service: number;
+  direct_transfer: number;
   answered: number;
   abandoned: number;
 }
@@ -124,12 +127,29 @@ export default function DashboardPage() {
           <Card title="呼叫漏斗">
             {funnel && (
               <div>
-                <Statistic title="总呼入" value={funnel.total_inbound} />
-                <Statistic title="IVR 完成" value={funnel.ivr_completed} style={{ marginTop: 8 }} />
-                <Statistic title="转人工" value={funnel.to_agent} style={{ marginTop: 8 }} />
-                <Statistic title="转机器人" value={funnel.to_bot} style={{ marginTop: 8 }} />
-                <Statistic title="已接听" value={funnel.answered} style={{ marginTop: 8 }} valueStyle={{ color: '#3f8600' }} />
-                <Statistic title="放弃" value={funnel.abandoned} style={{ marginTop: 8 }} valueStyle={{ color: '#cf1322' }} />
+                {[
+                  { label: '总呼入', value: funnel.total_inbound, color: '#1677ff' },
+                  { label: 'IVR 完成', value: funnel.ivr_completed, color: '#1890ff' },
+                  { label: '转人工', value: funnel.to_agent, color: '#13c2c2' },
+                  { label: '转机器人', value: funnel.to_bot, color: '#722ed1' },
+                  { label: '全服务', value: funnel.full_service || 0, color: '#2f54eb' },
+                  { label: '半服务', value: funnel.half_service || 0, color: '#faad14' },
+                  { label: '直转', value: funnel.direct_transfer || 0, color: '#eb2f96' },
+                  { label: '已接听', value: funnel.answered, color: '#52c41a' },
+                  { label: '放弃', value: funnel.abandoned, color: '#ff4d4f' },
+                ].map((step, _i, arr) => {
+                  const maxVal = Math.max(...arr.map((a) => a.value), 1);
+                  const widthPct = Math.max((step.value / maxVal) * 100, 20);
+                  return (
+                    <div key={step.label} style={{ marginBottom: 4 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#666', marginBottom: 2 }}>
+                        <span>{step.label}</span>
+                        <span style={{ fontWeight: 600 }}>{step.value}</span>
+                      </div>
+                      <div style={{ width: `${widthPct}%`, height: 20, background: step.color, borderRadius: 4, margin: '0 auto', transition: 'width 0.3s' }} />
+                    </div>
+                  );
+                })}
               </div>
             )}
           </Card>

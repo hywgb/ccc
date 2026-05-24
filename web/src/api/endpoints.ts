@@ -238,3 +238,39 @@ export const performanceApi = {
   list: (params?: Record<string, unknown>) => api.get('/performance-scorecards', { params }),
   generate: (data: Record<string, unknown>) => api.post('/performance-scorecards/generate', data),
 };
+
+// --- Social Channels ---
+export const socialChannelApi = {
+  list: () => api.get('/social-channels'),
+  create: (data: Record<string, unknown>) => api.post('/social-channels', data),
+  update: (id: number, data: Record<string, unknown>) => api.put(`/social-channels/${id}`, data),
+  delete: (id: number) => api.delete(`/social-channels/${id}`),
+};
+
+// --- Advanced AI ---
+export const voiceCloneApi = {
+  listTasks: () => api.get('/ai/voice-clone/tasks'),
+  createTask: (data: Record<string, unknown>) => api.post('/ai/voice-clone/tasks', data),
+  getTask: (id: number) => api.get(`/ai/voice-clone/tasks/${id}`),
+};
+
+export const conversationAnalyticsApi = {
+  analyze: (data: Record<string, unknown>) => api.post('/ai/conversation-analytics/analyze', data),
+};
+
+export const trainingApi = {
+  generateQuestions: (data: Record<string, unknown>) => api.post('/ai/training/generate-questions', data),
+  evaluate: (data: Record<string, unknown>) => api.post('/ai/training/evaluate', data),
+};
+
+// --- Supervisor ---
+export const supervisorApi = {
+  activeCalls: () => api.get('/supervisor/active-calls'),
+};
+
+// --- Webchat ---
+export const webchatApi = {
+  createSession: (data: Record<string, unknown>) => api.post('/webchat/sessions', data),
+  getMessages: (sessionId: string) => api.get(`/webchat/sessions/${sessionId}/messages`),
+  sendMessage: (sessionId: string, data: Record<string, unknown>) => api.post(`/webchat/sessions/${sessionId}/messages`, data),
+};

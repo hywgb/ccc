@@ -22,6 +22,7 @@ import {
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useAuthStore } from '../../stores/auth';
+import AgentPhoneBar from '../phone/AgentPhoneBar';
 
 const { Header, Sider, Content } = Layout;
 
@@ -61,6 +62,7 @@ const menuItems: MenuProps['items'] = [
     label: '批量外呼',
     children: [
       { key: '/campaigns', label: '外呼活动' },
+      { key: '/campaigns/live', label: '实时大屏' },
     ],
   },
   {
@@ -70,6 +72,7 @@ const menuItems: MenuProps['items'] = [
     children: [
       { key: '/im/sessions', label: '会话管理' },
       { key: '/im/channels', label: '渠道配置' },
+      { key: '/im/social', label: '社交渠道' },
     ],
   },
   {
@@ -108,6 +111,7 @@ const menuItems: MenuProps['items'] = [
       { key: '/ai/performance', label: '绩效管理' },
       { key: '/ai/annotations', label: '标注管理' },
       { key: '/ai/llm-models', label: 'LLM 网关' },
+      { key: '/ai/advanced', label: '高级 AI' },
     ],
   },
   {
@@ -176,6 +180,7 @@ export default function AppLayout() {
         />
       </Sider>
       <Layout>
+        <AgentPhoneBar />
         <Header style={{ padding: '0 24px', background: colorBgContainer, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
           <Dropdown menu={{ items: userMenu }} placement="bottomRight">
             <Space style={{ cursor: 'pointer' }}>
