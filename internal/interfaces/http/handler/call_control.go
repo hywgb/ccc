@@ -38,6 +38,7 @@ func (h *CallControlHandler) InboundCall(w http.ResponseWriter, r *http.Request)
 		TenantID:      in.TenantID,
 		Caller:        in.Caller,
 		Callee:        in.Callee,
+		ChannelUUID:   in.ChannelUUID,
 		IVRFlowID:     in.IVRFlowID,
 		PhoneNumberID: in.PhoneNumberID,
 		CarrierID:     in.CarrierID,
