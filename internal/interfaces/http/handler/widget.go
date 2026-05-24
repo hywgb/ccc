@@ -11,11 +11,16 @@ import (
 )
 
 type WidgetHandler struct {
-	svc *im.IMService
+	svc         *im.IMService
+	broadcaster IMBroadcaster
 }
 
 func NewWidgetHandler(svc *im.IMService) *WidgetHandler {
 	return &WidgetHandler{svc: svc}
+}
+
+func (h *WidgetHandler) SetBroadcaster(b IMBroadcaster) {
+	h.broadcaster = b
 }
 
 func (h *WidgetHandler) CreateSession(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +70,9 @@ func (h *WidgetHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if h.broadcaster != nil {
+		h.broadcaster.BroadcastEvent(id, "message.new", msg)
 	}
 	response.JSON(w, http.StatusCreated, msg)
 }

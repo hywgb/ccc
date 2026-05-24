@@ -21,11 +21,17 @@ type IMSessionRouter interface {
 	RouteSession(ctx context.Context, sessionID int64, agentUserID int64) error
 }
 
+// IMBroadcaster pushes IM events to connected WebSocket clients in a session.
+type IMBroadcaster interface {
+	BroadcastEvent(sessionID int64, eventType string, payload interface{})
+}
+
 type IMSessionHandler struct {
 	svc         *im.IMService
 	customerSvc *crm.CustomerService
 	webhookSvc  *webhook.Service
 	router      IMSessionRouter
+	broadcaster IMBroadcaster
 }
 
 func NewIMSessionHandler(svc *im.IMService, customerSvc *crm.CustomerService, webhookSvc *webhook.Service) *IMSessionHandler {
@@ -34,6 +40,10 @@ func NewIMSessionHandler(svc *im.IMService, customerSvc *crm.CustomerService, we
 
 func (h *IMSessionHandler) SetRouter(r IMSessionRouter) {
 	h.router = r
+}
+
+func (h *IMSessionHandler) SetBroadcaster(b IMBroadcaster) {
+	h.broadcaster = b
 }
 
 func (h *IMSessionHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -145,6 +155,9 @@ func (h *IMSessionHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if h.broadcaster != nil {
+		h.broadcaster.BroadcastEvent(id, "message.new", msg)
 	}
 	response.JSON(w, http.StatusCreated, msg)
 }

@@ -180,13 +180,13 @@ func (s *CallService) CreateOutboundCall(ctx context.Context, in CreateCallInput
 
 	now := time.Now()
 	c := &Call{
-		ID:            snowflake.NextID(),
-		TenantID:      in.TenantID,
-		Direction:     in.Direction,
-		CallType:      in.CallType,
-		MediaType:     mt,
-		Caller:        in.Caller,
-		Callee:        in.Callee,
+		ID:             snowflake.NextID(),
+		TenantID:       in.TenantID,
+		Direction:      in.Direction,
+		CallType:       in.CallType,
+		MediaType:      mt,
+		Caller:         in.Caller,
+		Callee:         in.Callee,
 		AgentUserID:    in.AgentUserID,
 		PhoneNumberID:  in.PhoneNumberID,
 		CarrierID:      in.CarrierID,
@@ -344,6 +344,13 @@ func (s *CallService) AnswerCall(ctx context.Context, id int64, agentUserID int6
 
 func (s *CallService) GetByID(ctx context.Context, id int64) (*Call, error) {
 	return s.calls.GetByID(ctx, id)
+}
+
+// FindByChannelUUID looks up a call by the FreeSWITCH channel UUID associated
+// with it at creation time. Used by the ESL event listener to map inbound
+// channel events back to the owning call record.
+func (s *CallService) FindByChannelUUID(ctx context.Context, channelUUID string) (*Call, error) {
+	return s.calls.GetByChannelUUID(ctx, channelUUID)
 }
 
 // ListCalls returns calls with optional filtering.

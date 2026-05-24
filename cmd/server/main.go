@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/divord97/ccc/internal/application/acd"
 	"github.com/divord97/ccc/internal/application/advancedai"
 	"github.com/divord97/ccc/internal/application/agenthub"
 	"github.com/divord97/ccc/internal/application/aianalysis"
@@ -44,6 +45,7 @@ import (
 	"github.com/divord97/ccc/internal/infrastructure/llm"
 	infraMySQL "github.com/divord97/ccc/internal/infrastructure/mysql"
 	infraRedis "github.com/divord97/ccc/internal/infrastructure/redis"
+	"github.com/divord97/ccc/internal/infrastructure/storage"
 	httpRouter "github.com/divord97/ccc/internal/interfaces/http"
 	"github.com/divord97/ccc/internal/interfaces/http/handler"
 	"github.com/divord97/ccc/pkg/snowflake"
@@ -238,7 +240,15 @@ func main() {
 		}
 		return g, nil
 	}
-	ivrEngine := ivr.DefaultEngine(eslClient, ivrFlowLoader)
+	acdSvc := acd.NewService(acd.Config{
+		Redis:      redisClient,
+		Lifecycle:  lifecycleSvc,
+		Presence:   agentPresenceRepo,
+		Members:    skillGroupMemberRepo,
+		SkillGroup: skillGroupRepo,
+		Logger:     logger,
+	})
+	ivrEngine := ivr.DefaultEngine(eslClient, ivrFlowLoader, acdSvc)
 	lifecycleSvc.SetIVREngine(ivrEngine)
 	// LLM Provider: use DashScope when API key configured, otherwise fallback to stub.
 	var llmProvider llm.Provider
@@ -312,6 +322,27 @@ func main() {
 	sipTrunkHandler := handler.NewSIPTrunkHandler(sipTrunkRepo)
 	phoneNumberHandler := handler.NewPhoneNumberHandler(phoneNumberRepo)
 	recordingHandler := handler.NewRecordingHandler(recordingRepo)
+	if cfg.Storage.Endpoint != "" {
+		store, err := storage.NewMinIOClient(storage.Config{
+			Endpoint:  cfg.Storage.Endpoint,
+			AccessKey: cfg.Storage.AccessKey,
+			SecretKey: cfg.Storage.SecretKey,
+			Bucket:    cfg.Storage.Bucket,
+			UseSSL:    cfg.Storage.UseSSL,
+			Logger:    logger,
+		})
+		if err != nil {
+			logger.Error().Err(err).Msg("storage: init failed; recording stream/download disabled")
+		} else {
+			if err := store.EnsureBucket(context.Background()); err != nil {
+				logger.Warn().Err(err).Str("bucket", cfg.Storage.Bucket).Msg("storage: ensure bucket")
+			}
+			recordingHandler.SetStore(store)
+			logger.Info().Str("endpoint", cfg.Storage.Endpoint).Str("bucket", cfg.Storage.Bucket).Msg("storage: configured")
+		}
+	} else {
+		logger.Warn().Msg("storage: STORAGE_ENDPOINT not set, recording stream/download return 501")
+	}
 	voicemailHandler := handler.NewVoicemailHandler(voicemailRepo)
 	callNumberTagHandler := handler.NewCallNumberTagHandler(callNumberTagRepo)
 	autoTagRuleHandler := handler.NewAutoTagRuleHandler(autoTagRuleRepo)
@@ -411,8 +442,8 @@ func main() {
 
 	// Advanced AI Providers: use DashScope when API key configured, otherwise stubs.
 	var (
-		commAgentProv    llm.CommAgentProvider
-		voiceCloneProv   llm.VoiceCloningProvider
+		commAgentProv     llm.CommAgentProvider
+		voiceCloneProv    llm.VoiceCloningProvider
 		convAnalyticsProv llm.ConversationAnalyticsProvider
 		ringAnalysisProv  llm.RingAnalysisProvider
 		fullDuplexProv    llm.FullDuplexProvider
@@ -469,45 +500,45 @@ func main() {
 
 	// --- Router ---
 	router := httpRouter.NewRouter(httpRouter.RouterDeps{
-		TenantHandler:        tenantHandler,
-		UserHandler:          userHandler,
-		AgentHandler:         agentHandler,
-		SkillGroupHandler:    skillGroupHandler,
-		IVRFlowHandler:       ivrFlowHandler,
-		CarrierHandler:       carrierHandler,
-		SIPTrunkHandler:      sipTrunkHandler,
-		PhoneNumberHandler:   phoneNumberHandler,
-		RecordingHandler:     recordingHandler,
-		VoicemailHandler:     voicemailHandler,
-		CallNumberTagHandler: callNumberTagHandler,
-		AutoTagRuleHandler:   autoTagRuleHandler,
-		RoutingRuleHandler:   routingRuleHandler,
-		CLIPolicyHandler:     cliPolicyHandler,
-		DNCHandler:           dncHandler,
-		CallHandler:          callHandler,
-		CallControlHandler:    callControlHandler,
-		AgentPresenceHandler:  agentPresenceHandler,
-		WebhookConfigHandler:  webhookConfigHandler,
+		TenantHandler:          tenantHandler,
+		UserHandler:            userHandler,
+		AgentHandler:           agentHandler,
+		SkillGroupHandler:      skillGroupHandler,
+		IVRFlowHandler:         ivrFlowHandler,
+		CarrierHandler:         carrierHandler,
+		SIPTrunkHandler:        sipTrunkHandler,
+		PhoneNumberHandler:     phoneNumberHandler,
+		RecordingHandler:       recordingHandler,
+		VoicemailHandler:       voicemailHandler,
+		CallNumberTagHandler:   callNumberTagHandler,
+		AutoTagRuleHandler:     autoTagRuleHandler,
+		RoutingRuleHandler:     routingRuleHandler,
+		CLIPolicyHandler:       cliPolicyHandler,
+		DNCHandler:             dncHandler,
+		CallHandler:            callHandler,
+		CallControlHandler:     callControlHandler,
+		AgentPresenceHandler:   agentPresenceHandler,
+		WebhookConfigHandler:   webhookConfigHandler,
 		ScreenPopConfigHandler: screenPopConfigHandler,
-		QuickReplyHandler:     quickReplyHandler,
-		SmsConfigHandler:      smsConfigHandler,
-		DashboardHandler:     dashboardHandler,
-		ReportHandler:        reportHandler,
-		CSATHandler:          csatHandler,
-		ProfileHandler:       profileHandler,
-		CampaignHandler:      campaignHandler,
-		B2BHandler:           b2bHandler,
-		TrunkGroupHandler:    trunkGroupHandler,
-		CustomerHandler:      customerHandler,
-		TicketHandler:        ticketHandler,
-		KnowledgeHandler:     knowledgeHandler,
-		AgentScriptHandler:   agentScriptHandler,
-		SessionInfoHandler:   sessionInfoHandler,
-		IMChannelHandler:     imChannelHandler,
-		IMSessionHandler:     imSessionHandler,
-		WidgetHandler:        widgetHandler,
-		EmailInboundHandler:  emailInboundHandler,
-		IMAssistHandler:      imAssistHandler,
+		QuickReplyHandler:      quickReplyHandler,
+		SmsConfigHandler:       smsConfigHandler,
+		DashboardHandler:       dashboardHandler,
+		ReportHandler:          reportHandler,
+		CSATHandler:            csatHandler,
+		ProfileHandler:         profileHandler,
+		CampaignHandler:        campaignHandler,
+		B2BHandler:             b2bHandler,
+		TrunkGroupHandler:      trunkGroupHandler,
+		CustomerHandler:        customerHandler,
+		TicketHandler:          ticketHandler,
+		KnowledgeHandler:       knowledgeHandler,
+		AgentScriptHandler:     agentScriptHandler,
+		SessionInfoHandler:     sessionInfoHandler,
+		IMChannelHandler:       imChannelHandler,
+		IMSessionHandler:       imSessionHandler,
+		WidgetHandler:          widgetHandler,
+		EmailInboundHandler:    emailInboundHandler,
+		IMAssistHandler:        imAssistHandler,
 		DigitalEmployeeHandler: digitalEmployeeHandler,
 		QAHandler:              qaHandler,
 		AIAnalysisHandler:      aiAnalysisHandler,
@@ -531,20 +562,21 @@ func main() {
 		BusinessHoursHandler:   businessHoursHandler,
 		CallTagDefHandler:      callTagDefHandler,
 		AuditLogHandler:        auditLogHandler,
-		SocialChannelHandler:    socialChannelHandler,
-		TenantSettingsHandler:   tenantSettingsHandler,
-		SupervisorHandler:       supervisorHandler,
-		ScreenPopHandler:        screenPopHandler,
-		PreviewCaseHandler:      previewCaseHandler,
-		AuthHandler:          authHandler,
-		DashboardHub:         dashboardHub,
-		IMHub:                imHub,
-		AgentHub:             agentHub,
-		TranscriptHub:        transcriptHub,
-		RateLimiter:          rateLimiter,
-		AuditLogRepo:         auditLogRepo,
-		JWTSecret:            cfg.JWT.Secret,
-		Logger:               logger,
+		SocialChannelHandler:   socialChannelHandler,
+		TenantSettingsHandler:  tenantSettingsHandler,
+		SupervisorHandler:      supervisorHandler,
+		ScreenPopHandler:       screenPopHandler,
+		PreviewCaseHandler:     previewCaseHandler,
+		AuthHandler:            authHandler,
+		DashboardHub:           dashboardHub,
+		IMHub:                  imHub,
+		AgentHub:               agentHub,
+		TranscriptHub:          transcriptHub,
+		RateLimiter:            rateLimiter,
+		AuditLogRepo:           auditLogRepo,
+		JWTSecret:              cfg.JWT.Secret,
+		ServiceAuthSecret:      cfg.ServiceAuth.Secret,
+		Logger:                 logger,
 	})
 
 	// Wire lifecycle → agentHub for real-time agent notifications
@@ -580,6 +612,25 @@ func main() {
 
 	// Wire IM router into session handler for auto-assignment
 	imSessionHandler.SetRouter(imRouterSvc)
+	// Wire IM hub for real-time broadcast of REST-posted messages.
+	imSessionHandler.SetBroadcaster(imHub)
+	widgetHandler.SetBroadcaster(imHub)
+
+	// ACD dispatcher: pull queued calls and assign them to idle agents.
+	go acdSvc.Run(hubCtx)
+	logger.Info().Msg("ACD dispatcher started")
+
+	// ESL event listener: drive call state machine from FreeSWITCH channel events.
+	if cfg.FreeSWITCH.Host != "" {
+		listener := esl.NewEventListener(esl.Config{
+			Host:     cfg.FreeSWITCH.Host,
+			Port:     cfg.FreeSWITCH.Port,
+			Password: cfg.FreeSWITCH.Password,
+			Logger:   logger,
+		}, lifecycleSvc)
+		go listener.Run(hubCtx)
+		logger.Info().Msg("ESL event listener started")
+	}
 
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)
 	srv := &http.Server{Addr: addr, Handler: router}

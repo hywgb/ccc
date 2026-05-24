@@ -117,10 +117,10 @@ func (r *SkillGroupReportRepo) Query(ctx context.Context, f report.ReportFilter)
 		SUM(CASE WHEN c.direction='inbound' THEN 1 ELSE 0 END) AS inbound_calls,
 		SUM(CASE WHEN c.direction='outbound' THEN 1 ELSE 0 END) AS outbound_calls,
 		SUM(CASE WHEN c.status='completed' AND c.talk_duration_sec > 0 THEN 1 ELSE 0 END) AS answered_calls,
-		SUM(CASE WHEN c.hangup_cause='CALLER_ABANDON' THEN 1 ELSE 0 END) AS abandoned_calls,
+		SUM(CASE WHEN c.hangup_reason='CALLER_ABANDON' THEN 1 ELSE 0 END) AS abandoned_calls,
 		SUM(CASE WHEN c.queue_duration_sec > 0 THEN 1 ELSE 0 END) AS queue_total,
-		SUM(CASE WHEN c.queue_duration_sec > 0 AND c.hangup_cause='CALLER_ABANDON' THEN 1 ELSE 0 END) AS queue_abandoned,
-		SUM(CASE WHEN c.ring_duration_sec > 0 AND c.hangup_cause='CALLER_ABANDON' THEN 1 ELSE 0 END) AS ring_abandoned,
+		SUM(CASE WHEN c.queue_duration_sec > 0 AND c.hangup_reason='CALLER_ABANDON' THEN 1 ELSE 0 END) AS queue_abandoned,
+		SUM(CASE WHEN c.ring_duration_sec > 0 AND c.hangup_reason='CALLER_ABANDON' THEN 1 ELSE 0 END) AS ring_abandoned,
 		COALESCE(AVG(c.wait_duration_sec),0) AS avg_wait_sec,
 		COALESCE(AVG(c.talk_duration_sec),0) AS avg_talk_sec
 	FROM skill_groups sg

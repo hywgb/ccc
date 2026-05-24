@@ -18,18 +18,27 @@ func NewCallRepo(db *sqlx.DB) *CallRepo {
 
 func (r *CallRepo) Create(ctx context.Context, c *call.Call) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO calls (id, tenant_id, direction, call_type, media_type, caller, callee, masked_callee,
+		`INSERT INTO calls (id, tenant_id, channel_uuid, direction, call_type, media_type, caller, callee, masked_callee,
 		 agent_user_id, skill_group_id, ivr_flow_id, phone_number_id, carrier_id, parent_call_id, campaign_case_id,
 		 status, hangup_reason, disposition_code, hold_count, transfer_count, satisfaction_rating,
 		 ivr_duration_sec, ring_duration_sec, queue_duration_sec, wait_duration_sec, duration_sec,
 		 recording_url, custom_data, started_at, answered_at, ended_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		c.ID, c.TenantID, c.Direction, c.CallType, c.MediaType, c.Caller, c.Callee, c.MaskedCallee,
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		c.ID, c.TenantID, c.ChannelUUID, c.Direction, c.CallType, c.MediaType, c.Caller, c.Callee, c.MaskedCallee,
 		c.AgentUserID, c.SkillGroupID, c.IVRFlowID, c.PhoneNumberID, c.CarrierID, c.ParentCallID, c.CampaignCaseID,
 		c.Status, c.HangupReason, c.DispositionCode, c.HoldCount, c.TransferCount, c.SatisfactionRating,
 		c.IVRDurationSec, c.RingDurationSec, c.QueueDurationSec, c.WaitDurationSec, c.DurationSec,
 		c.RecordingURL, c.CustomData, c.StartedAt, c.AnsweredAt, c.EndedAt)
 	return err
+}
+
+func (r *CallRepo) GetByChannelUUID(ctx context.Context, channelUUID string) (*call.Call, error) {
+	var c call.Call
+	err := r.db.GetContext(ctx, &c, "SELECT * FROM calls WHERE channel_uuid = ? LIMIT 1", channelUUID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &c, err
 }
 
 func (r *CallRepo) GetByID(ctx context.Context, id int64) (*call.Call, error) {

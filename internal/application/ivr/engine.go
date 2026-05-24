@@ -147,7 +147,13 @@ func (e *Engine) ExecuteFlow(ctx context.Context, sess *Session, flowID int64) e
 }
 
 // DefaultEngine returns an engine with all built-in node handlers registered.
-func DefaultEngine(eslClient *esl.Client, flowLoader FlowLoader) *Engine {
+// acd may be nil when the ACD dispatcher is unavailable; in that case
+// TransferToAgent falls back to the legacy `callcenter:` dialplan transfer.
+func DefaultEngine(eslClient *esl.Client, flowLoader FlowLoader, acd ...ACDEnqueuer) *Engine {
+	var enqueuer ACDEnqueuer
+	if len(acd) > 0 {
+		enqueuer = acd[0]
+	}
 	e := NewEngine()
 	e.flowLoader = flowLoader
 	e.RegisterHandler(routing.NodeStart, &StartHandler{})
@@ -164,7 +170,7 @@ func DefaultEngine(eslClient *esl.Client, flowLoader FlowLoader) *Engine {
 	e.RegisterHandler(routing.NodeSatisfactionRating, &SatisfactionRatingHandler{})
 	e.RegisterHandler(routing.NodeASR, &ASRHandler{})
 	e.RegisterHandler(routing.NodeVoicemail, &VoicemailHandler{})
-	e.RegisterHandler(routing.NodeTransferToAgent, &TransferToAgentHandler{})
+	e.RegisterHandler(routing.NodeTransferToAgent, &TransferToAgentHandler{ACD: enqueuer})
 	e.RegisterHandler(routing.NodeTransferToExternal, &TransferToExternalHandler{})
 	e.RegisterHandler(routing.NodeBlindTransfer, &BlindTransferHandler{})
 	e.RegisterHandler(routing.NodeSubFlow, &SubFlowHandler{engine: e, flowLoader: flowLoader})

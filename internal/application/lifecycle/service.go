@@ -24,12 +24,12 @@ type AgentNotifier interface {
 
 // Service orchestrates cross-domain side effects for call lifecycle events.
 type Service struct {
-	callSvc       *call.CallService
-	presenceSvc   *identity.AgentPresenceService
-	csatSvc       *csat.Service
-	webhookSvc    *webhook.Service
-	customerSvc   *crm.CustomerService
-	screenPop     *screenpop.Service
+	callSvc           *call.CallService
+	presenceSvc       *identity.AgentPresenceService
+	csatSvc           *csat.Service
+	webhookSvc        *webhook.Service
+	customerSvc       *crm.CustomerService
+	screenPop         *screenpop.Service
 	recordingRepo     call.RecordingRepository
 	queueSnapshotRepo call.QueueSnapshotRepository
 	eslClient         *esl.Client
@@ -75,7 +75,6 @@ func (s *Service) SetIVREngine(e *ivr.Engine) {
 func (s *Service) SetQueueSnapshotRepo(r call.QueueSnapshotRepository) {
 	s.queueSnapshotRepo = r
 }
-
 
 // EndCall ends a call and triggers all post-call side effects:
 //   - Hangup FreeSWITCH channel
