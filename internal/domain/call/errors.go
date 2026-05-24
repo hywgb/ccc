@@ -14,6 +14,7 @@ var (
 	ErrCallNotHeld       = errors.New("call is not held")
 	ErrMissingTransferTarget = errors.New("transfer target is required")
 	ErrMissingDTMF            = errors.New("DTMF digits are required")
+	ErrInvalidDTMFDigits      = errors.New("DTMF digits must only contain 0-9, *, #, A-D")
 	ErrCallbackNotFound       = errors.New("callback request not found")
 	ErrCallNotConsulting      = errors.New("call is not in consulting state")
 	ErrCallNotInConference    = errors.New("call is not in conference state")

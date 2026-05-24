@@ -251,6 +251,7 @@ func (s *TicketService) Transition(ctx context.Context, ticketID int64, newStatu
 
 func (s *TicketService) AddComment(ctx context.Context, ticketID, authorID int64, content string) error {
 	c := &TicketComment{
+		ID:        snowflake.NextID(),
 		TicketID:  ticketID,
 		AuthorID:  authorID,
 		Content:   content,

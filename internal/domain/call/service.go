@@ -354,6 +354,11 @@ func (s *CallService) SendDTMF(ctx context.Context, id int64, digits string) err
 	if digits == "" {
 		return ErrMissingDTMF
 	}
+	for _, c := range digits {
+		if !((c >= '0' && c <= '9') || c == '*' || c == '#' || (c >= 'A' && c <= 'D')) {
+			return ErrInvalidDTMFDigits
+		}
+	}
 	c, err := s.calls.GetByID(ctx, id)
 	if err != nil || c == nil {
 		return ErrCallNotFound
