@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/divord97/ccc/internal/domain/identity"
+	"github.com/divord97/ccc/internal/interfaces/http/middleware"
 	"github.com/divord97/ccc/pkg/response"
 	"github.com/go-chi/chi/v5"
 )
@@ -114,7 +115,7 @@ func (h *AgentPresenceHandler) SwitchWorkMode(w http.ResponseWriter, r *http.Req
 }
 
 func (h *AgentPresenceHandler) ListByTenant(w http.ResponseWriter, r *http.Request) {
-	tenantID, _ := strconv.ParseInt(r.URL.Query().Get("tenant_id"), 10, 64)
+	tenantID := middleware.TenantIDFromCtx(r.Context())
 	list, err := h.svc.ListByTenant(r.Context(), tenantID)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, err.Error())

@@ -3,8 +3,10 @@ package http
 import (
 	"net/http"
 
+	"github.com/divord97/ccc/internal/application/agenthub"
 	"github.com/divord97/ccc/internal/application/dashboard"
 	"github.com/divord97/ccc/internal/application/imhub"
+	"github.com/divord97/ccc/internal/application/transcripthub"
 	"github.com/divord97/ccc/internal/domain/ai"
 	"github.com/divord97/ccc/internal/domain/platform"
 	"github.com/divord97/ccc/internal/infrastructure/redis"
@@ -105,12 +107,22 @@ type RouterDeps struct {
 	// Social Channels
 	SocialChannelHandler *handler.SocialChannelHandler
 
+	// Tenant Settings
+	TenantSettingsHandler *handler.TenantSettingsHandler
+
+	// Phone Component Extras
+	SupervisorHandler  *handler.SupervisorHandler
+	ScreenPopHandler   *handler.ScreenPopHandler
+	PreviewCaseHandler *handler.PreviewCaseHandler
+
 	// Auth
 	AuthHandler *handler.AuthHandler
 
 	// WebSocket Hubs
-	DashboardHub *dashboard.Hub
-	IMHub        *imhub.Hub
+	DashboardHub  *dashboard.Hub
+	IMHub         *imhub.Hub
+	AgentHub      *agenthub.Hub
+	TranscriptHub *transcripthub.Hub
 
 	// Infrastructure
 	RateLimiter  *redis.RateLimiter
@@ -143,6 +155,16 @@ func NewRouter(deps RouterDeps) *chi.Mux {
 	if deps.IMHub != nil {
 		r.Get("/api/v1/ws/im", func(w http.ResponseWriter, r *http.Request) {
 			deps.IMHub.ServeWS(w, r)
+		})
+	}
+	if deps.AgentHub != nil {
+		r.Get("/api/v1/ws/agent-events", func(w http.ResponseWriter, r *http.Request) {
+			deps.AgentHub.ServeWS(w, r)
+		})
+	}
+	if deps.TranscriptHub != nil {
+		r.Get("/api/v1/ws/transcript", func(w http.ResponseWriter, r *http.Request) {
+			deps.TranscriptHub.ServeWS(w, r)
 		})
 	}
 
@@ -393,6 +415,13 @@ func NewRouter(deps RouterDeps) *chi.Mux {
 			r.Get("/{id}/stats", deps.CampaignHandler.Stats)
 		})
 
+		// Phone Component Extra Routes
+		r.Get("/supervisor/active-calls", deps.SupervisorHandler.ActiveCalls)
+		r.Get("/screen-pop/lookup", deps.ScreenPopHandler.Lookup)
+		r.Get("/campaigns/preview/current", deps.PreviewCaseHandler.Current)
+		r.Post("/campaigns/{campaignId}/cases/{caseId}/dial", deps.PreviewCaseHandler.DialCase)
+		r.Post("/campaigns/{campaignId}/cases/{caseId}/skip", deps.PreviewCaseHandler.SkipCase)
+
 		r.Post("/calls/back2back", deps.B2BHandler.Back2BackCall)
 		r.Post("/flash-sms", deps.B2BHandler.FlashSMS)
 
@@ -429,6 +458,7 @@ func NewRouter(deps RouterDeps) *chi.Mux {
 		r.Route("/ticket-templates", func(r chi.Router) {
 			r.Post("/", deps.TicketHandler.CreateTemplate)
 			r.Get("/", deps.TicketHandler.ListTemplates)
+			r.Get("/{id}", deps.TicketHandler.GetTemplate)
 			r.Put("/{id}", deps.TicketHandler.UpdateTemplate)
 			r.Post("/{id}/publish", deps.TicketHandler.PublishTemplate)
 			r.Post("/{id}/offline", deps.TicketHandler.OfflineTemplate)
@@ -671,11 +701,18 @@ func NewRouter(deps RouterDeps) *chi.Mux {
 			r.Post("/", deps.CallTagDefHandler.Create)
 			r.Get("/", deps.CallTagDefHandler.List)
 			r.Get("/{id}", deps.CallTagDefHandler.Get)
+			r.Put("/{id}", deps.CallTagDefHandler.Update)
 			r.Delete("/{id}", deps.CallTagDefHandler.Delete)
 		})
 
 		r.Route("/audit-logs", func(r chi.Router) {
 			r.Get("/", deps.AuditLogHandler.List)
+		})
+
+		// --- Tenant Settings ---
+		r.Route("/tenant-settings", func(r chi.Router) {
+			r.Get("/", deps.TenantSettingsHandler.Get)
+			r.Put("/", deps.TenantSettingsHandler.Update)
 		})
 
 		// --- Social Channel Config ---

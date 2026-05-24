@@ -12,11 +12,13 @@ import (
 	"github.com/divord97/ccc/internal/application/aianalysis"
 	"github.com/divord97/ccc/internal/application/b2b"
 	"github.com/divord97/ccc/internal/application/csat"
+	"github.com/divord97/ccc/internal/application/agenthub"
 	"github.com/divord97/ccc/internal/application/dashboard"
 	"github.com/divord97/ccc/internal/application/dialer"
 	"github.com/divord97/ccc/internal/application/email"
 	"github.com/divord97/ccc/internal/application/imassist"
 	"github.com/divord97/ccc/internal/application/imhub"
+	"github.com/divord97/ccc/internal/application/transcripthub"
 	"github.com/divord97/ccc/internal/application/outbound"
 	"github.com/divord97/ccc/internal/config"
 	"github.com/divord97/ccc/internal/domain/ai"
@@ -319,12 +321,22 @@ func main() {
 	// Social Channels
 	socialChannelHandler := handler.NewSocialChannelHandler(socialChannelSvc)
 
+	// Tenant Settings Handler
+	tenantSettingsHandler := handler.NewTenantSettingsHandler(tenantSettingsRepo)
+
+	// Phone Component Extra Handlers
+	supervisorHandler := handler.NewSupervisorHandler(callSvc)
+	screenPopHandler := handler.NewScreenPopHandler(customerSvc)
+	previewCaseHandler := handler.NewPreviewCaseHandler(campaignSvc)
+
 	// Auth Handler
 	authHandler := handler.NewAuthHandler(userRepo, cfg.JWT.Secret)
 
 	// WebSocket Hubs
 	dashboardHub := dashboard.NewHub(dashboardSvc, logger)
 	imHub := imhub.NewHub(imSvc, logger)
+	agentHub := agenthub.NewHub(logger)
+	transcriptHub := transcripthub.NewHub(logger)
 
 	// Phase 10 Repositories
 	annotationTaskRepo := infraMySQL.NewAnnotationTaskRepo(db)
@@ -454,10 +466,16 @@ func main() {
 		BusinessHoursHandler:   businessHoursHandler,
 		CallTagDefHandler:      callTagDefHandler,
 		AuditLogHandler:        auditLogHandler,
-		SocialChannelHandler:  socialChannelHandler,
+		SocialChannelHandler:    socialChannelHandler,
+		TenantSettingsHandler:   tenantSettingsHandler,
+		SupervisorHandler:       supervisorHandler,
+		ScreenPopHandler:        screenPopHandler,
+		PreviewCaseHandler:      previewCaseHandler,
 		AuthHandler:          authHandler,
 		DashboardHub:         dashboardHub,
 		IMHub:                imHub,
+		AgentHub:             agentHub,
+		TranscriptHub:        transcriptHub,
 		RateLimiter:          rateLimiter,
 		AuditLogRepo:         auditLogRepo,
 		JWTSecret:            cfg.JWT.Secret,
@@ -468,6 +486,8 @@ func main() {
 	hubCtx, hubCancel := context.WithCancel(context.Background())
 	go dashboardHub.StartBroadcast(hubCtx)
 	go imHub.StartBroadcast(hubCtx)
+	go agentHub.StartBroadcast(hubCtx)
+	go transcriptHub.StartBroadcast(hubCtx)
 
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)
 	srv := &http.Server{Addr: addr, Handler: router}
