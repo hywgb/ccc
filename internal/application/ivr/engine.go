@@ -40,6 +40,14 @@ func (e *Engine) SetSentimentAnalyzer(a SentimentAnalyzer) {
 	}
 }
 
+// SetCustomerLookup wires the CRM lookup provider for CustomerLookup nodes.
+func (e *Engine) SetCustomerLookup(c CustomerLookupProvider) {
+	if h, ok := e.handlers[routing.NodeCustomerLookup].(*CustomerLookupHandler); ok {
+		h.CRM = c
+	}
+}
+
+
 // SetIVRContextSink rewires the TransferToAgent handler to persist session
 // variables (so the agent screen pop can show the caller's IVR breadcrumbs).
 // Safe to call after DefaultEngine has registered the handler.
@@ -209,6 +217,7 @@ func DefaultEngine(eslClient *esl.Client, flowLoader FlowLoader, acd ...ACDEnque
 	e.RegisterHandler(routing.NodeNLU, &NLUHandler{})
 	e.RegisterHandler(routing.NodeQueuePosition, &QueuePositionHandler{})
 	e.RegisterHandler(routing.NodeSentimentGate, &SentimentGateHandler{})
+	e.RegisterHandler(routing.NodeCustomerLookup, &CustomerLookupHandler{})
 	return e
 }
 
