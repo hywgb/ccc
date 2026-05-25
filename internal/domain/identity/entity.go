@@ -31,9 +31,14 @@ type TenantSettings struct {
 	APIRateLimitPerSec      int    `db:"api_rate_limit_per_sec" json:"api_rate_limit_per_sec"`
 	FamiliarAgentDays       int    `db:"familiar_agent_days" json:"familiar_agent_days"`
 	// Configurable thresholds (previously hardcoded).
-	MaxDailyDialPerPhone int `db:"max_daily_dial_per_phone" json:"max_daily_dial_per_phone"` // 0 = use default (3)
+	MaxDailyDialPerPhone  int `db:"max_daily_dial_per_phone" json:"max_daily_dial_per_phone"` // 0 = use default (3)
 	CSATLowScoreThreshold int `db:"csat_low_score_threshold" json:"csat_low_score_threshold"` // 0 = use default (2)
 	RepeatCallThreshold   int `db:"repeat_call_threshold" json:"repeat_call_threshold"`       // 0 = use default (3)
+	// Resource quotas.
+	StorageQuotaMB     int64 `db:"storage_quota_mb" json:"storage_quota_mb"`           // 0 = unlimited
+	AICallQuotaPerDay  int   `db:"ai_call_quota_per_day" json:"ai_call_quota_per_day"` // 0 = unlimited
+	CDRRetentionDays   int   `db:"cdr_retention_days" json:"cdr_retention_days"`       // 0 = use recording_retention_days
+	TranscriptRetentionDays int `db:"transcript_retention_days" json:"transcript_retention_days"` // 0 = use recording_retention_days
 }
 
 type UserRole string

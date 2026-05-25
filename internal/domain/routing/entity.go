@@ -50,6 +50,7 @@ const (
 	NodeNLU                NodeType = "nlu"
 	NodeQueuePosition      NodeType = "queue_position"
 	NodeSentimentGate      NodeType = "sentiment_gate"
+	NodeCustomerLookup     NodeType = "customer_lookup"
 	NodeEnd                NodeType = "end"
 )
 
@@ -59,7 +60,7 @@ var AllNodeTypes = []NodeType{
 	NodeSetVariable, NodeVoicemail, NodeHangupReason,
 	NodeFunction, NodeHTTPRequest, NodeJSONParser, NodeSMS,
 	NodeSatisfactionRating, NodeASR, NodeSubFlow, NodeDigitalEmployee,
-	NodeCallback, NodeNLU, NodeQueuePosition, NodeSentimentGate, NodeEnd,
+	NodeCallback, NodeNLU, NodeQueuePosition, NodeSentimentGate, NodeCustomerLookup, NodeEnd,
 }
 
 type IVRFlow struct {
