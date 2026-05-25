@@ -3,8 +3,10 @@ package postcall
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/divord97/ccc/internal/domain/call"
+	"github.com/divord97/ccc/pkg/metrics"
 	"github.com/rs/zerolog"
 )
 
@@ -46,6 +48,10 @@ func (w *Worker) HandleMessage(ctx context.Context, subject string, data []byte)
 }
 
 func (w *Worker) handleCallEnded(ctx context.Context, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.PostCallProcessingLatency.Observe(time.Since(start).Seconds())
+	}()
 	var c call.Call
 	if err := json.Unmarshal(data, &c); err != nil {
 		w.logger.Error().Err(err).Msg("postcall: unmarshal call.ended")

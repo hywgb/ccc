@@ -277,6 +277,9 @@ func (s *Service) dispatchOne(ctx context.Context, sgID int64) {
 		_ = s.rdb.ZAdd(ctx, queueKey(sgID), redis.Z{Score: head[0].Score, Member: member}).Err()
 		return
 	}
+	if _, enqueuedAt, ok := parseMember(member); ok {
+		metrics.ACDDispatchLatency.Observe(float64(time.Now().UnixMilli()-enqueuedAt) / 1000.0)
+	}
 	s.logger.Info().Int64("call_id", callID).Int64("agent_id", agentID).Int64("sg", sgID).Msg("acd: routed call to agent")
 }
 

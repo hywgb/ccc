@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/divord97/ccc/pkg/metrics"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/rs/zerolog"
 )
@@ -67,6 +68,9 @@ func (c *Consumer) Subscribe(ctx context.Context, stream, durable, filterSubject
 			continue
 		}
 
+		if meta, err := msg.Metadata(); err == nil && meta.NumDelivered > 1 {
+			metrics.NATSRedeliveries.WithLabelValues(msg.Subject()).Inc()
+		}
 		if err := c.handler(ctx, msg.Subject(), msg.Data()); err != nil {
 			c.logger.Warn().Err(err).Str("subject", msg.Subject()).Msg("nats: handler error, nacking")
 			_ = msg.Nak()
