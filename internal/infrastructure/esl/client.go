@@ -128,14 +128,19 @@ func (c *Client) Shrink(n int) int {
 		if int(cur) <= c.minPool {
 			break
 		}
+		if !atomic.CompareAndSwapInt32(&c.poolSize, cur, cur-1) {
+			i-- // retry
+			continue
+		}
 		select {
 		case cn := <-c.pool:
 			if cn != nil && cn.tcpConn != nil {
 				cn.tcpConn.Close()
 			}
-			atomic.AddInt32(&c.poolSize, -1)
 			removed++
 		default:
+			// No idle conn available; restore the counter.
+			atomic.AddInt32(&c.poolSize, 1)
 			return removed
 		}
 	}
