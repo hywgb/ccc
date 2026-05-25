@@ -386,9 +386,17 @@ func main() {
 				}
 			}()
 			logger.Info().Msg("nats: postcall consumer started")
+
+			// Daily CDR reconciler: backfills any rows the NATS path missed.
+			reconciler := postcall.NewReconciler(db, logger)
+			go reconciler.Run(context.Background(), 2)
 		}
 	} else {
 		logger.Warn().Msg("nats: NATS_URL not set, event publishing disabled")
+		// Even without NATS, run the reconciler so daily_cdr_summary stays
+		// up to date from the calls table.
+		reconciler := postcall.NewReconciler(db, logger)
+		go reconciler.Run(context.Background(), 2)
 	}
 
 	// --- Phase 9 Repositories ---
@@ -475,7 +483,7 @@ func main() {
 	b2bHandler := handler.NewB2BHandler(b2bSvc)
 	trunkGroupHandler := handler.NewTrunkGroupHandler(trunkGroupRepo)
 	customerHandler := handler.NewCustomerHandler(customerSvc)
-	ticketHandler := handler.NewTicketHandler(ticketSvc, ticketTemplateSvc)
+	ticketHandler := handler.NewTicketHandler(ticketSvc, ticketTemplateSvc, logger)
 	knowledgeHandler := handler.NewKnowledgeHandler(knowledgeSvc)
 	agentScriptHandler := handler.NewAgentScriptHandler(agentScriptSvc)
 	sessionInfoHandler := handler.NewSessionInfoHandler(sessionInfoSvc)
@@ -508,7 +516,7 @@ func main() {
 
 	// Phone Component Extra Handlers
 	supervisorHandler := handler.NewSupervisorHandler(callSvc)
-	screenPopHandler := handler.NewScreenPopHandler(customerSvc)
+	screenPopHandler := handler.NewScreenPopHandler(customerSvc, screenPopSvc, callSvc)
 	previewCaseHandler := handler.NewPreviewCaseHandler(campaignSvc, dialerSvc)
 
 	// Auth Handler

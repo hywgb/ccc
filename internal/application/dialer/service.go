@@ -9,6 +9,7 @@ import (
 
 	"github.com/divord97/ccc/internal/domain/campaign"
 	"github.com/divord97/ccc/internal/infrastructure/esl"
+	"github.com/divord97/ccc/pkg/metrics"
 	"github.com/rs/zerolog"
 )
 
@@ -279,11 +280,17 @@ func (s *Service) dialPower(ctx context.Context, c *campaign.Campaign, state *di
 
 // dialCase places an actual call for a campaign case and records the result.
 func (s *Service) dialCase(ctx context.Context, c *campaign.Campaign, cs *campaign.CampaignCase, state *dialerState) {
+	modeLabel := string(c.DialingMode)
+	if modeLabel == "" && state != nil {
+		modeLabel = string(state.mode)
+	}
+	metrics.DialerAttempts.WithLabelValues(modeLabel).Inc()
 	err := s.dialFn(ctx, c.TenantID, cs.PhoneNumber, c.ID, cs.ID)
 	connected := err == nil
 	disposition := ""
 	if connected {
 		disposition = "connected"
+		metrics.DialerConnected.WithLabelValues(modeLabel).Inc()
 	} else if err != nil {
 		disposition = "dial_failed"
 	}

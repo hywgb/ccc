@@ -112,4 +112,44 @@ var (
 		},
 		[]string{"hub"},
 	)
+
+	ACDDispatchLatency = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "ccc_acd_dispatch_latency_seconds",
+			Help:    "ACD wait from enqueue to ring",
+			Buckets: []float64{1, 5, 10, 20, 30, 60, 120},
+		},
+	)
+
+	DialerAttempts = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ccc_dialer_attempts_total",
+			Help: "Outbound dial attempts by dialing mode",
+		},
+		[]string{"mode"},
+	)
+
+	DialerConnected = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ccc_dialer_connected_total",
+			Help: "Outbound dial successful connects by mode",
+		},
+		[]string{"mode"},
+	)
+
+	NATSRedeliveries = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ccc_nats_redeliveries_total",
+			Help: "NATS JetStream redelivery count by subject",
+		},
+		[]string{"subject"},
+	)
+
+	PostCallProcessingLatency = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "ccc_postcall_processing_seconds",
+			Help:    "Time to fully process a call.ended event",
+			Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5},
+		},
+	)
 )

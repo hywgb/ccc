@@ -301,6 +301,7 @@ func NewRouter(deps RouterDeps) *chi.Mux {
 		r.Route("/calls", func(r chi.Router) {
 			r.Get("/", deps.CallHandler.List)
 			r.Get("/cursor", deps.CallHandler.ListCursor)
+			r.Get("/export", deps.CallHandler.Export)
 			r.Get("/{id}", deps.CallHandler.Get)
 			r.Get("/{id}/events", deps.CallHandler.GetEvents)
 			r.Get("/{id}/ivr-tracking", deps.CallHandler.GetIVRTracking)
