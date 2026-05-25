@@ -16,6 +16,7 @@ import (
 	"github.com/divord97/ccc/internal/application/b2b"
 	"github.com/divord97/ccc/internal/application/callback"
 	"github.com/divord97/ccc/internal/application/csat"
+	appSms "github.com/divord97/ccc/internal/application/sms"
 	"github.com/divord97/ccc/internal/application/dashboard"
 	"github.com/divord97/ccc/internal/application/dialer"
 	"github.com/divord97/ccc/internal/application/email"
@@ -254,6 +255,12 @@ func main() {
 	// --- Application Services ---
 	outboundSvc := outbound.NewService(callSvc, routingSvc, cliSvc, dncSvc, eslClient)
 	csatSvc := csat.NewService(csatConfigRepo, csatResultRepo, logger)
+	// Wire SMS sender into CSAT so SMS surveys are actually delivered.
+	if cfg.Aliyun.AccessKeyID != "" {
+		smsSvc := appSms.NewServiceWithAliyun(smsConfigRepo, cfg.Aliyun.AccessKeyID, cfg.Aliyun.AccessKeySecret, logger)
+		csatSvc.SetSMSSender(csatSMSAdapter{sms: smsSvc})
+		csatSvc.SetCallerLookup(csatCallerAdapter{calls: callRepo})
+	}
 	dialerSvc := dialer.NewService(campaignSvc, eslClient, logger)
 	// Wire dialer to use outbound service for DNC/routing/CLI compliance
 	dialerSvc.SetDialFunc(func(ctx context.Context, tenantID int64, callee string, campaignID, caseID int64) error {
@@ -271,8 +278,33 @@ func main() {
 	webhookSvc := webhook.NewService(webhookConfigRepo, webhookLogRepo, logger)
 	lifecycleSvc := lifecycle.NewService(callSvc, agentPresenceSvc, csatSvc, webhookSvc, customerSvc, screenPopSvc, recordingRepo, eslClient, logger)
 	imRouterSvc := imrouter.NewService(imSvc, agentPresenceSvc, skillGroupSvc, logger)
+
+	// Bridge IM → CRM: record an interaction when an IM session closes.
+	imSvc.OnSessionClose(func(ctx context.Context, sess *im.IMSession) {
+		if sess.CustomerID == nil {
+			return
+		}
+		_ = customerSvc.RecordInteraction(ctx, crm.RecordInteractionInput{
+			CustomerID: *sess.CustomerID,
+			TenantID:   sess.TenantID,
+			Channel:    "im",
+			Direction:  "inbound",
+			Summary:    "IM session via channel " + fmt.Sprintf("%d", sess.ChannelID),
+		})
+	})
+	// Bridge IM → Webhook: fire im.session.closed event.
+	imSvc.OnSessionClose(func(ctx context.Context, sess *im.IMSession) {
+		webhookSvc.Deliver(ctx, webhook.Event{
+			TenantID:  sess.TenantID,
+			Type:      "im.session.closed",
+			Payload:   sess,
+			Timestamp: time.Now(),
+		})
+	})
+
 	trunkMonitor := trunk.NewHealthMonitor(sipTrunkRepo, trunkHealthSvc, logger, eslClient)
 	emailSvc := email.NewService(imSvc, logger)
+	emailSvc.SetRouter(imRouterSvc)
 
 	// IVR Engine: create engine with all node handlers for flow execution.
 	ivrFlowLoader := func(ctx context.Context, flowID int64) (*routing.FlowGraph, error) {
@@ -731,20 +763,7 @@ func main() {
 	go transcriptHub.StartBroadcast(hubCtx)
 
 	// Start callback scheduler (processes pending callbacks every 30s)
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-hubCtx.Done():
-				return
-			case <-ticker.C:
-				if n, err := callbackSch.ProcessAllPending(hubCtx); err == nil && n > 0 {
-					logger.Info().Int("processed", n).Msg("callback scheduler: processed pending callbacks")
-				}
-			}
-		}
-	}()
+	go callbackSch.Run(hubCtx, 30*time.Second)
 
 	// Ghost agent auto-reset: scan agents stuck in talking/dialing for over 4 hours.
 	go func() {
@@ -854,9 +873,29 @@ func (a *tenantSettingsAdapter) GetByTenantID(ctx context.Context, tenantID int6
 	return ts.MaxConcurrentCalls
 }
 
-// runNLSRefresher polls Aliyun NLS for a fresh token before the current one
-// expires, then atomically swaps it onto the ASR/TTS providers. Aliyun's REST
-// returns expireTime in seconds; we refresh ~5 min before. On failure we
+// csatSMSAdapter bridges appSms.Service → csat.SMSSender.
+type csatSMSAdapter struct{ sms *appSms.Service }
+
+func (a csatSMSAdapter) Send(ctx context.Context, tenantID int64, phone, templateCode string, params map[string]string) error {
+	return a.sms.Send(ctx, appSms.SendRequest{
+		TenantID:     tenantID,
+		Phone:        phone,
+		TemplateCode: templateCode,
+		Params:       params,
+	})
+}
+
+// csatCallerAdapter resolves a caller phone from the calls table.
+type csatCallerAdapter struct{ calls call.CallRepository }
+
+func (a csatCallerAdapter) GetByID(ctx context.Context, id int64) (string, error) {
+	c, err := a.calls.GetByID(ctx, id)
+	if err != nil || c == nil {
+		return "", err
+	}
+	return c.Caller, nil
+}
+
 // retry every 5 minutes with the previous (still valid) token until success.
 func runNLSRefresher(accessKeyID, accessKeySecret string, expireSec int64, asr *llm.AliyunASRProvider, tts *llm.AliyunTTSProvider, logger zerolog.Logger) {
 	nextDelay := func(expSec int64) time.Duration {

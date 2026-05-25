@@ -41,9 +41,17 @@ func (s *Service) RouteSession(ctx context.Context, sessionID int64, agentUserID
 	return nil
 }
 
-// AutoRouteSession picks an idle agent from the session's skill group and assigns them.
-// This enables IM sessions to use the same skill-group-based routing as voice calls.
-func (s *Service) AutoRouteSession(ctx context.Context, sessionID int64, skillGroupID int64) error {
+// AutoRouteIMSession picks an idle agent from the session's skill group and assigns them.
+// Accepts *im.IMSession directly so it satisfies the email.SessionRouter interface.
+func (s *Service) AutoRouteSession(ctx context.Context, sess *im.IMSession) error {
+	if sess.SkillGroupID == nil {
+		return fmt.Errorf("im router: session %d has no skill group", sess.ID)
+	}
+	return s.autoRouteBySkillGroup(ctx, sess.ID, *sess.SkillGroupID)
+}
+
+// autoRouteBySkillGroup picks an idle agent from the given skill group and assigns them.
+func (s *Service) autoRouteBySkillGroup(ctx context.Context, sessionID int64, skillGroupID int64) error {
 	members, err := s.skillGroupSvc.GetMembers(ctx, skillGroupID)
 	if err != nil {
 		return fmt.Errorf("im router: list members: %w", err)

@@ -179,6 +179,19 @@ func (r *CallRepo) CountTodayByTenant(ctx context.Context, tenantID int64) (tota
 	return
 }
 
+func (r *CallRepo) SLATodayByTenant(ctx context.Context, tenantID int64) (avgWaitSec float64, answeredWithin20s int, totalOffered int, longestWaitSec int, err error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT
+			COALESCE(AVG(queue_duration_sec), 0) AS avg_wait_sec,
+			SUM(CASE WHEN answered_at IS NOT NULL AND queue_duration_sec <= 20 THEN 1 ELSE 0 END) AS answered_within_20s,
+			SUM(CASE WHEN direction='inbound' THEN 1 ELSE 0 END) AS total_offered,
+			COALESCE(MAX(CASE WHEN status='queue' THEN queue_duration_sec ELSE 0 END), 0) AS longest_wait_sec
+		 FROM calls
+		 WHERE tenant_id = ? AND started_at >= CURDATE()`, tenantID)
+	err = row.Scan(&avgWaitSec, &answeredWithin20s, &totalOffered, &longestWaitSec)
+	return
+}
+
 // CallEventRepo
 
 type CallEventRepo struct {

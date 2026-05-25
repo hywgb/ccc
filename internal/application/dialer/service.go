@@ -205,6 +205,13 @@ func (s *Service) dialPredictive(ctx context.Context, c *campaign.Campaign, stat
 	s.mu.Lock()
 	abandonRate := calcAbandonRate(state.abandonCount, state.totalDialed)
 	slots := int(c.RatioMultiplier) - state.activeCalls
+	if c.ConcurrentLimit > 0 && state.activeCalls >= c.ConcurrentLimit {
+		s.mu.Unlock()
+		return
+	}
+	if c.ConcurrentLimit > 0 && slots > c.ConcurrentLimit-state.activeCalls {
+		slots = c.ConcurrentLimit - state.activeCalls
+	}
 	if c.MaxAbandonRate > 0 && abandonRate > c.MaxAbandonRate {
 		// Proportional throttle: scale slots down based on how far above threshold.
 		overshoot := abandonRate / c.MaxAbandonRate
@@ -258,6 +265,13 @@ func (s *Service) dialProgressive(ctx context.Context, c *campaign.Campaign, sta
 func (s *Service) dialPower(ctx context.Context, c *campaign.Campaign, state *dialerState) {
 	s.mu.Lock()
 	slots := int(c.RatioMultiplier) - state.activeCalls
+	if c.ConcurrentLimit > 0 && state.activeCalls >= c.ConcurrentLimit {
+		s.mu.Unlock()
+		return
+	}
+	if c.ConcurrentLimit > 0 && slots > c.ConcurrentLimit-state.activeCalls {
+		slots = c.ConcurrentLimit - state.activeCalls
+	}
 	if slots <= 0 {
 		s.mu.Unlock()
 		return

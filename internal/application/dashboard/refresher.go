@@ -110,6 +110,9 @@ func (r *Refresher) refreshTenant(ctx context.Context, tenantID int64) error {
 		}
 	}
 
+	avgWait, within20s, offered, longestWait, _ := r.callRepo.SLATodayByTenant(ctx, tenantID)
+	sl20s := report.CalculateServiceLevel20s(within20s, offered)
+
 	overview := &report.DashboardOverview{
 		TenantID:        tenantID,
 		TotalCallsToday: total,
@@ -119,6 +122,9 @@ func (r *Refresher) refreshTenant(ctx context.Context, tenantID int64) error {
 		QueuedCalls:     queued,
 		AbandonedCalls:  abandoned,
 		AnsweredCalls:   answered,
+		ServiceLevel20s: sl20s,
+		AvgWaitSec:      avgWait,
+		LongestWaitSec:  longestWait,
 		AgentsOnline:    online,
 		AgentsIdle:      idle,
 		AgentsTalking:   talking,

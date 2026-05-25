@@ -21,6 +21,26 @@ func NewScheduler(cbRepo call.CallbackRequestRepository, callSvc *call.CallServi
 	return &Scheduler{callbackRepo: cbRepo, callSvc: callSvc, outboundSvc: outboundSvc, logger: logger}
 }
 
+// Run drives the callback scheduler in the background, polling every interval
+// until ctx is canceled.
+func (s *Scheduler) Run(ctx context.Context, interval time.Duration) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			n, err := s.ProcessAllPending(ctx)
+			if err != nil {
+				s.logger.Warn().Err(err).Msg("callback: scheduler tick failed")
+			} else if n > 0 {
+				s.logger.Info().Int("processed", n).Msg("callback: scheduler tick completed")
+			}
+		}
+	}
+}
+
 // ProcessAllPending finds pending callbacks across all tenants and attempts them.
 func (s *Scheduler) ProcessAllPending(ctx context.Context) (int, error) {
 	pending, err := s.callbackRepo.ListAllPending(ctx)

@@ -12,9 +12,9 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// IMSessionAutoRouter assigns an idle agent to a fresh IM session by skill group.
+// IMSessionAutoRouter assigns an idle agent to a fresh IM session.
 type IMSessionAutoRouter interface {
-	AutoRouteSession(ctx context.Context, sessionID int64, skillGroupID int64) error
+	AutoRouteSession(ctx context.Context, sess *im.IMSession) error
 }
 
 type WidgetHandler struct {
@@ -47,9 +47,9 @@ func (h *WidgetHandler) CreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.autoRouter != nil && sess.SkillGroupID != nil {
-		go func(sid int64, sg int64) {
-			_ = h.autoRouter.AutoRouteSession(context.Background(), sid, sg)
-		}(sess.ID, *sess.SkillGroupID)
+		go func(s *im.IMSession) {
+			_ = h.autoRouter.AutoRouteSession(context.Background(), s)
+		}(sess)
 	}
 	response.JSON(w, http.StatusCreated, sess)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/divord97/ccc/internal/domain/integration"
@@ -11,16 +12,34 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// SMSSender sends an SMS survey to the customer.
+type SMSSender interface {
+	Send(ctx context.Context, tenantID int64, phone, templateCode string, params map[string]string) error
+}
+
+// CallerLookup retrieves a call record to extract the customer phone number.
+type CallerLookup interface {
+	GetByID(ctx context.Context, id int64) (caller string, err error)
+}
+
 // Service manages CSAT survey triggering and result collection.
 type Service struct {
-	configs integration.CSATConfigRepository
-	results integration.CSATResultRepository
-	logger  zerolog.Logger
+	configs    integration.CSATConfigRepository
+	results    integration.CSATResultRepository
+	smsSender  SMSSender
+	callerLook CallerLookup
+	logger     zerolog.Logger
 }
 
 func NewService(configs integration.CSATConfigRepository, results integration.CSATResultRepository, logger zerolog.Logger) *Service {
 	return &Service{configs: configs, results: results, logger: logger}
 }
+
+// SetSMSSender wires the SMS channel for CSAT surveys.
+func (s *Service) SetSMSSender(sender SMSSender) { s.smsSender = sender }
+
+// SetCallerLookup wires a function to resolve the customer phone from a call ID.
+func (s *Service) SetCallerLookup(l CallerLookup) { s.callerLook = l }
 
 // TriggerSurvey initiates a CSAT survey for a completed call.
 func (s *Service) TriggerSurvey(ctx context.Context, tenantID, callID int64, agentID *int64) error {
@@ -37,12 +56,12 @@ func (s *Service) TriggerSurvey(ctx context.Context, tenantID, callID int64, age
 	case "ivr":
 		s.logger.Info().Int64("call_id", callID).Msg("csat: IVR survey triggered")
 	case "sms":
-		s.logger.Info().Int64("call_id", callID).Msg("csat: SMS survey triggered")
+		s.sendSMSSurvey(ctx, cfg, tenantID, callID)
 	case "both":
-		s.logger.Info().Int64("call_id", callID).Msg("csat: IVR+SMS survey triggered")
+		s.logger.Info().Int64("call_id", callID).Msg("csat: IVR survey triggered")
+		s.sendSMSSurvey(ctx, cfg, tenantID, callID)
 	}
 
-	_ = cfg
 	return nil
 }
 
@@ -60,4 +79,30 @@ func (s *Service) RecordResult(ctx context.Context, tenantID, callID, configID i
 		CreatedAt: time.Now(),
 	}
 	return s.results.Create(ctx, result)
+}
+
+// sendSMSSurvey resolves the customer phone from the call and sends the CSAT
+// SMS via the configured template.
+func (s *Service) sendSMSSurvey(ctx context.Context, cfg *integration.CSATConfig, tenantID, callID int64) {
+	if s.smsSender == nil || s.callerLook == nil {
+		s.logger.Warn().Int64("call_id", callID).Msg("csat: SMS sender or caller lookup not configured, skipping SMS survey")
+		return
+	}
+	if cfg.SmsTemplateID == "" {
+		s.logger.Warn().Int64("call_id", callID).Msg("csat: no SMS template configured, skipping")
+		return
+	}
+	phone, err := s.callerLook.GetByID(ctx, callID)
+	if err != nil || phone == "" {
+		s.logger.Warn().Err(err).Int64("call_id", callID).Msg("csat: could not resolve caller phone")
+		return
+	}
+	params := map[string]string{
+		"call_id": fmt.Sprintf("%d", callID),
+	}
+	if err := s.smsSender.Send(ctx, tenantID, phone, cfg.SmsTemplateID, params); err != nil {
+		s.logger.Error().Err(err).Int64("call_id", callID).Str("phone", phone).Msg("csat: SMS survey send failed")
+		return
+	}
+	s.logger.Info().Int64("call_id", callID).Str("phone", phone).Msg("csat: SMS survey sent")
 }

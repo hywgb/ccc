@@ -179,13 +179,22 @@ func (s *Service) tick(ctx context.Context) {
 		s.logger.Warn().Err(err).Msg("acd: list skill groups")
 		return
 	}
+	// Pre-load skill groups once per tick to avoid repeated DB lookups.
+	sgCache := make(map[int64]*identity.SkillGroup, len(sgIDs))
 	for _, raw := range sgIDs {
 		sgID, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
 			continue
 		}
-		s.expireQueued(ctx, sgID)
-		s.dispatchOne(ctx, sgID)
+		sg, err := s.skillGroup.GetByID(ctx, sgID)
+		if err != nil || sg == nil {
+			continue
+		}
+		sgCache[sgID] = sg
+	}
+	for sgID, sg := range sgCache {
+		s.expireQueued(ctx, sgID, sg)
+		s.dispatchOne(ctx, sgID, sg)
 	}
 }
 
@@ -197,9 +206,8 @@ func (s *Service) tick(ctx context.Context) {
 // score: the score mixes priority + timestamp in a way that cannot be cleanly
 // decoded for arbitrary priority magnitudes, so we keep wall-clock time
 // authoritative by embedding it in the member.
-func (s *Service) expireQueued(ctx context.Context, sgID int64) {
-	sg, err := s.skillGroup.GetByID(ctx, sgID)
-	if err != nil || sg == nil || sg.MaxWaitSec <= 0 {
+func (s *Service) expireQueued(ctx context.Context, sgID int64, sg *identity.SkillGroup) {
+	if sg.MaxWaitSec <= 0 {
 		return
 	}
 	entries, err := s.rdb.ZRange(ctx, queueKey(sgID), 0, -1).Result()
@@ -236,7 +244,7 @@ func (s *Service) expireQueued(ctx context.Context, sgID int64) {
 // dispatchOne attempts to assign the head-of-queue call for a skill group to an
 // idle agent. At most one assignment per tick per skill group to keep the loop
 // fair across groups.
-func (s *Service) dispatchOne(ctx context.Context, sgID int64) {
+func (s *Service) dispatchOne(ctx context.Context, sgID int64, sg *identity.SkillGroup) {
 	head, err := s.rdb.ZRangeWithScores(ctx, queueKey(sgID), 0, 0).Result()
 	if err != nil || len(head) == 0 {
 		return
@@ -245,11 +253,6 @@ func (s *Service) dispatchOne(ctx context.Context, sgID int64) {
 	callID, _, ok := parseMember(member)
 	if !ok {
 		_ = s.rdb.ZRem(ctx, queueKey(sgID), head[0].Member).Err()
-		return
-	}
-
-	sg, err := s.skillGroup.GetByID(ctx, sgID)
-	if err != nil || sg == nil {
 		return
 	}
 
