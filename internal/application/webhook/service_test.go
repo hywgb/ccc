@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -47,9 +48,9 @@ func (r *stubLogRepo) List(_ context.Context, _ int64, _, _ int) ([]*integration
 // --- tests ---
 
 func TestDeliver_SendsToMatchingConfig(t *testing.T) {
-	var received bool
+	var received atomic.Bool
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		received = true
+		received.Store(true)
 		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
 			t.Errorf("expected json content-type, got %s", ct)
 		}
@@ -78,7 +79,7 @@ func TestDeliver_SendsToMatchingConfig(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	if !received {
+	if !received.Load() {
 		t.Error("webhook was not delivered")
 	}
 }
