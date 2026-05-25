@@ -201,7 +201,7 @@ func main() {
 			Logger:   logger,
 		})
 		callSvc.SetTelephonyProvider(esl.NewTelephonyAdapter(eslClient))
-		go eslClient.AutoScale(context.Background(), 30*time.Second)
+		go eslClient.AutoScale(context.Background(), time.Duration(cfg.Tuning.ESLAutoScaleSec)*time.Second)
 		logger.Info().Str("host", cfg.FreeSWITCH.Host).Msg("ESL: FreeSWITCH telephony provider configured")
 	} else {
 		logger.Warn().Msg("ESL: FREESWITCH_HOST not set, telephony commands disabled")
@@ -414,6 +414,9 @@ func main() {
 		go runNLSRefresher(cfg.Aliyun.AccessKeyID, cfg.Aliyun.AccessKeySecret, nlsExpireSec, aliyunASR, aliyunTTS, logger)
 	}
 
+	// hubCtx drives all background goroutines; cancelled on SIGTERM.
+	hubCtx, hubCancel := context.WithCancel(context.Background())
+
 	// NATS event publisher (best-effort): publishes ccc.call.* and ccc.agent.*
 	// to JetStream so downstream consumers (analytics, BI, third-party CRM
 	// hooks) can subscribe without polling the DB.
@@ -435,7 +438,7 @@ func main() {
 			postCallWorker = postcall.NewWorker(callRepo, cdrRepo, logger)
 			natsConsumer := infraNATS.NewConsumer(natsClient, postCallWorker.HandleMessage)
 			go func() {
-				if err := natsConsumer.Subscribe(context.Background(), cfg.NATS.Stream, "postcall-worker", "ccc.call.>"); err != nil {
+				if err := natsConsumer.Subscribe(hubCtx, cfg.NATS.Stream, "postcall-worker", "ccc.call.>"); err != nil {
 					logger.Error().Err(err).Msg("nats: postcall consumer stopped")
 				}
 			}()
@@ -443,14 +446,14 @@ func main() {
 
 			// Daily CDR reconciler: backfills any rows the NATS path missed.
 			reconciler := postcall.NewReconciler(db, logger)
-			go reconciler.Run(context.Background(), 2)
+			go reconciler.Run(hubCtx, 2)
 		}
 	} else {
 		logger.Warn().Msg("nats: NATS_URL not set, event publishing disabled")
 		// Even without NATS, run the reconciler so daily_cdr_summary stays
 		// up to date from the calls table.
 		reconciler := postcall.NewReconciler(db, logger)
-		go reconciler.Run(context.Background(), 2)
+		go reconciler.Run(hubCtx, 2)
 	}
 
 	// --- Phase 9 Repositories ---
@@ -782,7 +785,6 @@ func main() {
 	dashRefresher.SetAlarmNotifier(dashboard.NewLogAlarmNotifier(logger))
 
 	// Start WebSocket hub goroutines
-	hubCtx, hubCancel := context.WithCancel(context.Background())
 	go dashRefresher.Start(hubCtx)
 	go dashboardHub.StartBroadcast(hubCtx)
 	go imHub.StartBroadcast(hubCtx)
@@ -790,11 +792,11 @@ func main() {
 	go transcriptHub.StartBroadcast(hubCtx)
 
 	// Start callback scheduler (processes pending callbacks every 30s)
-	go callbackSch.Run(hubCtx, 30*time.Second)
+	go callbackSch.Run(hubCtx, time.Duration(cfg.Tuning.CallbackIntervalSec)*time.Second)
 
 	// Ghost agent auto-reset: scan agents stuck in talking/dialing for over 4 hours.
 	go func() {
-		ticker := time.NewTicker(60 * time.Second)
+		ticker := time.NewTicker(time.Duration(cfg.Tuning.GhostAgentCheckSec) * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
@@ -875,10 +877,10 @@ func main() {
 	hubCancel()
 
 	// Phase 3: drain period for load balancers to detect unavailability
-	time.Sleep(5 * time.Second)
+	time.Sleep(time.Duration(cfg.Tuning.ShutdownDrainSec) * time.Second)
 
 	// Phase 4: wait for in-flight requests to complete
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Tuning.ShutdownTimeoutSec)*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error().Err(err).Msg("server shutdown error")

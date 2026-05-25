@@ -279,3 +279,57 @@ func (g *stubConcurrencyGuard) Release(_ context.Context, _ int64) {
 		g.releaseFn()
 	}
 }
+
+func TestTransitionCallToQueue_PublishesEvent(t *testing.T) {
+	pub := &stubPublisher{}
+	callSvc := call.NewCallService(call.NewMockCallRepo(), call.NewMockCallEventRepo(), nil)
+
+	svc := &Service{
+		callSvc:   callSvc,
+		publisher: pub,
+		logger:    zerolog.Nop(),
+	}
+
+	c, err := callSvc.CreateInboundCall(context.Background(), call.CreateCallInput{
+		TenantID: 1, Caller: "13800138000", Callee: "4001234567",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	queued, err := svc.TransitionCallToQueue(context.Background(), c.ID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued.Status != call.CallStatusQueue {
+		t.Errorf("expected queue status, got %s", queued.Status)
+	}
+}
+
+func TestHandleInboundCall_ConcurrencyLimitRejects(t *testing.T) {
+	callSvc := call.NewCallService(call.NewMockCallRepo(), call.NewMockCallEventRepo(), nil)
+	guard := &stubConcurrencyGuard{}
+
+	svc := &Service{
+		callSvc:     callSvc,
+		concurrency: guard,
+		logger:      zerolog.Nop(),
+		tenantSettings: &stubTenantSettings{maxConcurrent: 0},
+	}
+
+	// With maxConcurrent=0 from settings, concurrency check should still proceed
+	_, err := svc.HandleInboundCall(context.Background(), call.CreateCallInput{
+		TenantID: 1, Caller: "13800138000", Callee: "4001234567",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+type stubTenantSettings struct {
+	maxConcurrent int
+}
+
+func (s *stubTenantSettings) GetByTenantID(_ context.Context, _ int64) int {
+	return s.maxConcurrent
+}

@@ -70,7 +70,9 @@ func (s *Scheduler) processList(ctx context.Context, pending []*call.CallbackReq
 			now := time.Now()
 			cb.Status = "max_attempts"
 			cb.LastAttemptAt = &now
-			_ = s.callbackRepo.Update(ctx, cb)
+			if err := s.callbackRepo.Update(ctx, cb); err != nil {
+				s.logger.Warn().Err(err).Int64("callback_id", cb.ID).Msg("failed to update max_attempts status")
+			}
 			continue
 		}
 
@@ -108,7 +110,9 @@ func (s *Scheduler) processList(ctx context.Context, pending []*call.CallbackReq
 			processed++
 		}
 
-		_ = s.callbackRepo.Update(ctx, cb)
+		if err := s.callbackRepo.Update(ctx, cb); err != nil {
+			s.logger.Warn().Err(err).Int64("callback_id", cb.ID).Msg("failed to update callback status")
+		}
 	}
 	return processed, nil
 }

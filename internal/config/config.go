@@ -17,7 +17,17 @@ type Config struct {
 	Storage     StorageConfig
 	NATS        NATSConfig
 	OTEL        OTELConfig
+	Tuning      TuningConfig
 	LogLevel    string // zerolog level: debug, info, warn, error
+}
+
+// TuningConfig holds operational tuning parameters previously hardcoded in main.go.
+type TuningConfig struct {
+	CallbackIntervalSec    int // callback scheduler polling interval (default 30)
+	GhostAgentCheckSec     int // ghost agent reset scan interval (default 60)
+	ESLAutoScaleSec        int // ESL pool auto-scale interval (default 30)
+	ShutdownDrainSec       int // pre-shutdown drain period for LB (default 5)
+	ShutdownTimeoutSec     int // graceful shutdown timeout (default 15)
 }
 
 // NATSConfig points the lifecycle event publisher at a JetStream-enabled NATS
@@ -146,6 +156,13 @@ func Load() *Config {
 			TTSSampleRate:   envOrInt("ALIBABA_TTS_SAMPLE_RATE", 16000),
 			DashScopeAPIKey: firstEnv("TONGYI_API_KEY", "DASHSCOPE_API_KEY"),
 			DashScopeModel:  firstEnvOr("qwen-plus", "TONGYI_MODEL", "DASHSCOPE_MODEL"),
+		},
+		Tuning: TuningConfig{
+			CallbackIntervalSec: envOrInt("TUNING_CALLBACK_INTERVAL_SEC", 30),
+			GhostAgentCheckSec:  envOrInt("TUNING_GHOST_AGENT_CHECK_SEC", 60),
+			ESLAutoScaleSec:     envOrInt("TUNING_ESL_AUTOSCALE_SEC", 30),
+			ShutdownDrainSec:    envOrInt("TUNING_SHUTDOWN_DRAIN_SEC", 5),
+			ShutdownTimeoutSec:  envOrInt("TUNING_SHUTDOWN_TIMEOUT_SEC", 15),
 		},
 		LogLevel: envOr("LOG_LEVEL", "info"),
 	}

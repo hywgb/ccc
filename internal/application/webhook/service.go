@@ -166,7 +166,7 @@ func (s *Service) deliverToConfig(ctx context.Context, cfg *integration.WebhookC
 			Msg("webhook: delivery failed (logged to dead-letter via webhook_deliveries.success=false)")
 	}
 
-	_ = s.logs.Create(ctx, &integration.WebhookDeliveryLog{
+	if err := s.logs.Create(ctx, &integration.WebhookDeliveryLog{
 		ID:              snowflake.NextID(),
 		TenantID:        cfg.TenantID,
 		WebhookConfigID: cfg.ID,
@@ -178,7 +178,9 @@ func (s *Service) deliverToConfig(ctx context.Context, cfg *integration.WebhookC
 		Success:         success,
 		ErrorMessage:    lastErr,
 		CreatedAt:       time.Now(),
-	})
+	}); err != nil {
+		s.logger.Warn().Err(err).Int64("config_id", cfg.ID).Str("event", eventType).Msg("failed to persist delivery log")
+	}
 }
 
 func (s *Service) sign(payload []byte, secret string) string {
