@@ -11,7 +11,7 @@ import (
 )
 
 func TestHandleMessage_CallEnded(t *testing.T) {
-	w := NewWorker(call.NewMockCallRepo(), zerolog.Nop())
+	w := NewWorker(call.NewMockCallRepo(), nil, zerolog.Nop())
 
 	c := call.Call{
 		ID:       1,
@@ -29,7 +29,7 @@ func TestHandleMessage_CallEnded(t *testing.T) {
 }
 
 func TestHandleMessage_CallAnswered(t *testing.T) {
-	w := NewWorker(call.NewMockCallRepo(), zerolog.Nop())
+	w := NewWorker(call.NewMockCallRepo(), nil, zerolog.Nop())
 
 	c := call.Call{
 		ID:       2,
@@ -47,7 +47,7 @@ func TestHandleMessage_CallAnswered(t *testing.T) {
 }
 
 func TestHandleMessage_UnknownSubject(t *testing.T) {
-	w := NewWorker(call.NewMockCallRepo(), zerolog.Nop())
+	w := NewWorker(call.NewMockCallRepo(), nil, zerolog.Nop())
 
 	err := w.HandleMessage(context.Background(), "ccc.call.unknown", []byte("{}"))
 	if err != nil {
@@ -56,7 +56,7 @@ func TestHandleMessage_UnknownSubject(t *testing.T) {
 }
 
 func TestHandleMessage_BadJSON(t *testing.T) {
-	w := NewWorker(call.NewMockCallRepo(), zerolog.Nop())
+	w := NewWorker(call.NewMockCallRepo(), nil, zerolog.Nop())
 
 	err := w.HandleMessage(context.Background(), "ccc.call.ended", []byte("not json"))
 	if err != nil {

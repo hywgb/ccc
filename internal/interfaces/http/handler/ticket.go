@@ -164,6 +164,23 @@ func (h *TicketHandler) ListTickets(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]interface{}{"items": items})
 }
 
+func (h *TicketHandler) ListByCall(w http.ResponseWriter, r *http.Request) {
+	tenantID := middleware.TenantIDFromCtx(r.Context())
+	callID, _ := strconv.ParseInt(chi.URLParam(r, "callId"), 10, 64)
+	items, err := h.svc.ListByCallID(r.Context(), callID)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	scoped := items[:0]
+	for _, t := range items {
+		if t.TenantID == tenantID {
+			scoped = append(scoped, t)
+		}
+	}
+	response.JSON(w, http.StatusOK, map[string]interface{}{"items": scoped})
+}
+
 func (h *TicketHandler) GetTicket(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	tk, err := h.svc.GetByID(r.Context(), id)
