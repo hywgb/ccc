@@ -22,3 +22,12 @@ CREATE TABLE IF NOT EXISTS daily_cdr_summary (
   UNIQUE KEY uniq_tenant_date (tenant_id, bucket_date),
   INDEX idx_date (bucket_date)
 );
+
+-- Dedup table so NATS at-least-once redelivery doesn't double-count a call into
+-- daily_cdr_summary. A row here is the source-of-truth that this call has
+-- already been folded into the aggregate.
+CREATE TABLE IF NOT EXISTS cdr_processed_calls (
+  call_id      BIGINT UNSIGNED PRIMARY KEY,
+  processed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_processed_at (processed_at)
+);

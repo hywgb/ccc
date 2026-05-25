@@ -52,8 +52,9 @@ func (w *Worker) handleCallEnded(ctx context.Context, data []byte) error {
 		return nil // don't retry on bad data
 	}
 
-	if w.cdrRepo != nil {
+	if w.cdrRepo != nil && c.ID > 0 {
 		entry := CDREntry{
+			CallID:       c.ID,
 			TenantID:     c.TenantID,
 			BucketDate:   c.StartedAt.Format("2006-01-02"),
 			TalkSeconds:  c.DurationSec,
@@ -72,7 +73,7 @@ func (w *Worker) handleCallEnded(ctx context.Context, data []byte) error {
 		}
 		if err := w.cdrRepo.UpsertDailyCDR(ctx, entry); err != nil {
 			w.logger.Error().Err(err).Int64("call_id", c.ID).Msg("postcall: daily cdr upsert failed")
-			return err // let NATS retry; idempotent upsert is safe under MaxDeliver
+			return err // safe under NATS MaxDeliver: cdr_processed_calls dedup makes retries no-ops
 		}
 	}
 
