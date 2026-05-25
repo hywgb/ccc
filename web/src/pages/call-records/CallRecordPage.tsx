@@ -69,7 +69,28 @@ export default function CallRecordPage() {
 
   return (
     <>
-      <Card title="通话记录" extra={<Button icon={<ReloadOutlined />} onClick={load}>刷新</Button>}>
+      <Card
+        title="通话记录"
+        extra={
+          <Space>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={() => {
+                const qs = new URLSearchParams();
+                if (filters.phone) qs.set('caller', filters.phone);
+                if (filters.call_type) qs.set('call_type', filters.call_type);
+                if (filters.status) qs.set('status', filters.status);
+                if (filters.start_date) qs.set('start_from', filters.start_date);
+                if (filters.end_date) qs.set('start_to', filters.end_date);
+                window.open(`/api/v1/calls/export?${qs.toString()}`, '_blank');
+              }}
+            >
+              导出CSV
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={load}>刷新</Button>
+          </Space>
+        }
+      >
         <Space wrap style={{ marginBottom: 16 }}>
           <Input prefix={<SearchOutlined />} placeholder="搜索号码" onChange={(e) => setFilters({ ...filters, phone: e.target.value })} style={{ width: 180 }} allowClear />
           <Select placeholder="通话类型" allowClear style={{ width: 140 }} onChange={(v) => setFilters({ ...filters, call_type: v })} options={Object.keys(typeColors).map((k) => ({ value: k, label: k }))} />

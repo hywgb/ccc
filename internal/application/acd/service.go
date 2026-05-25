@@ -56,6 +56,7 @@ var _ LifecycleService = (*lifecycle.Service)(nil)
 // PresenceRepo exposes the lookups the dispatcher needs.
 type PresenceRepo interface {
 	GetByAgentID(ctx context.Context, agentID int64) (*identity.AgentPresence, error)
+	GetByAgentIDs(ctx context.Context, agentIDs []int64) ([]*identity.AgentPresence, error)
 }
 
 // MembersRepo lists agents in a skill group.
@@ -277,7 +278,7 @@ func (s *Service) dispatchOne(ctx context.Context, sgID int64) {
 		_ = s.rdb.ZAdd(ctx, queueKey(sgID), redis.Z{Score: head[0].Score, Member: member}).Err()
 		return
 	}
-	if _, enqueuedAt, ok := parseMember(member); ok {
+	if _, enqueuedAt, ok := parseMember(member); ok && enqueuedAt > 0 {
 		metrics.ACDDispatchLatency.Observe(float64(time.Now().UnixMilli()-enqueuedAt) / 1000.0)
 	}
 	s.logger.Info().Int64("call_id", callID).Int64("agent_id", agentID).Int64("sg", sgID).Msg("acd: routed call to agent")
@@ -292,13 +293,23 @@ func (s *Service) pickAgent(ctx context.Context, sg *identity.SkillGroup, callID
 		ID       int64
 		LastIdle time.Time
 	}
+	// Batch-fetch presence to avoid N MySQL round-trips per dispatch.
+	agentIDs := make([]int64, 0, len(members))
+	for _, m := range members {
+		agentIDs = append(agentIDs, m.AgentID)
+	}
+	presences, err := s.presence.GetByAgentIDs(ctx, agentIDs)
+	if err != nil {
+		return 0, err
+	}
+	byAgent := make(map[int64]*identity.AgentPresence, len(presences))
+	for _, p := range presences {
+		byAgent[p.AgentID] = p
+	}
 	var candidates []idleAgent
 	for _, m := range members {
-		p, err := s.presence.GetByAgentID(ctx, m.AgentID)
-		if err != nil || p == nil {
-			continue
-		}
-		if p.Status != identity.PresenceIdle {
+		p := byAgent[m.AgentID]
+		if p == nil || p.Status != identity.PresenceIdle {
 			continue
 		}
 		candidates = append(candidates, idleAgent{ID: m.AgentID, LastIdle: p.LastStatusAt})

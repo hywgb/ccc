@@ -25,7 +25,7 @@ interface ScreenPopResponse {
 export default function ScreenPopPanel({ callerNumber, callId }: { callerNumber?: string; callId?: number }) {
   const [customer, setCustomer] = useState<CustomerInfo | null>(null);
   const [loading, setLoading] = useState(false);
-  const [iframeUrl, setIframeUrl] = useState<string>('');
+  const [iframeUrls, setIframeUrls] = useState<string[]>([]);
   const [ivrContext, setIvrContext] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -40,14 +40,15 @@ export default function ScreenPopPanel({ callerNumber, callId }: { callerNumber?
         setCustomer(data?.customer || null);
         setIvrContext(data?.ivr_context || {});
         const urls = data?.urls || [];
-        setIframeUrl(urls[0] || data?.iframe_url || '');
+        const combined = urls.length > 0 ? urls : (data?.iframe_url ? [data.iframe_url] : []);
+        setIframeUrls(combined);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [callerNumber, callId]);
 
   if (loading) return <Card size="small"><Spin style={{ display: 'block', padding: 40 }} /></Card>;
-  if (!callerNumber) return null;
+  if (!callerNumber && !callId) return null;
 
   return (
     <Card title={<Space><UserOutlined /> 来电弹屏</Space>} size="small">
@@ -107,11 +108,11 @@ export default function ScreenPopPanel({ callerNumber, callId }: { callerNumber?
             </Descriptions>
           ),
         }] : []),
-        ...(iframeUrl ? [{
-          key: 'iframe',
-          label: <Space><PhoneOutlined />业务系统</Space>,
-          children: <iframe src={iframeUrl} style={{ width: '100%', height: 400, border: 'none' }} title="弹屏" />,
-        }] : []),
+        ...iframeUrls.map((url, idx) => ({
+          key: `iframe-${idx}`,
+          label: <Space><PhoneOutlined />{iframeUrls.length > 1 ? `业务系统 ${idx + 1}` : '业务系统'}</Space>,
+          children: <iframe src={url} style={{ width: '100%', height: 400, border: 'none' }} title={`弹屏-${idx}`} />,
+        })),
       ]} />
     </Card>
   );

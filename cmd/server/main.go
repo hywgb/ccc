@@ -483,7 +483,7 @@ func main() {
 	b2bHandler := handler.NewB2BHandler(b2bSvc)
 	trunkGroupHandler := handler.NewTrunkGroupHandler(trunkGroupRepo)
 	customerHandler := handler.NewCustomerHandler(customerSvc)
-	ticketHandler := handler.NewTicketHandler(ticketSvc, ticketTemplateSvc)
+	ticketHandler := handler.NewTicketHandler(ticketSvc, ticketTemplateSvc, logger)
 	knowledgeHandler := handler.NewKnowledgeHandler(knowledgeSvc)
 	agentScriptHandler := handler.NewAgentScriptHandler(agentScriptSvc)
 	sessionInfoHandler := handler.NewSessionInfoHandler(sessionInfoSvc)

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -85,6 +86,25 @@ func (s *Service) matchesEvent(events, eventType string) bool {
 	return false
 }
 
+// backoffFor returns the sleep duration before retry N (1-indexed). Exponential
+// growth (2s, 4s, 8s, 16s, 32s) with up to ±20% jitter and a 60s cap, so a
+// flapping destination won't synchronize retries from every CCC instance.
+func backoffFor(attempt int) time.Duration {
+	base := time.Duration(1<<attempt) * time.Second // 2,4,8,16,32...
+	if base > 60*time.Second {
+		base = 60 * time.Second
+	}
+	jitter := time.Duration(rand.Int63n(int64(base) / 5)) // 0..20%
+	return base + jitter
+}
+
+// isRetryable returns true for transport/server errors. 4xx responses are
+// the destination's authoritative rejection — retrying them just wastes
+// resources and pollutes delivery logs.
+func isRetryable(statusCode int) bool {
+	return statusCode == 0 || statusCode >= 500 || statusCode == 408 || statusCode == 429
+}
+
 func (s *Service) deliverToConfig(ctx context.Context, cfg *integration.WebhookConfig, eventType string, payload []byte) {
 	var lastErr string
 	var respStatus int
@@ -110,7 +130,10 @@ func (s *Service) deliverToConfig(ctx context.Context, cfg *integration.WebhookC
 		resp, err := s.client.Do(req)
 		if err != nil {
 			lastErr = err.Error()
-			time.Sleep(time.Duration(attempt) * 2 * time.Second)
+			respStatus = 0
+			if attempt < s.maxRetry {
+				time.Sleep(backoffFor(attempt))
+			}
 			continue
 		}
 
@@ -124,7 +147,23 @@ func (s *Service) deliverToConfig(ctx context.Context, cfg *integration.WebhookC
 			break
 		}
 		lastErr = fmt.Sprintf("HTTP %d", resp.StatusCode)
-		time.Sleep(time.Duration(attempt) * 2 * time.Second)
+		if !isRetryable(resp.StatusCode) {
+			break // permanent client rejection; don't waste retries
+		}
+		if attempt < s.maxRetry {
+			time.Sleep(backoffFor(attempt))
+		}
+	}
+
+	if !success {
+		s.logger.Warn().
+			Int64("config_id", cfg.ID).
+			Int64("tenant_id", cfg.TenantID).
+			Str("event", eventType).
+			Int("attempts", actualAttempts).
+			Int("last_status", respStatus).
+			Str("last_error", lastErr).
+			Msg("webhook: delivery failed (logged to dead-letter via webhook_deliveries.success=false)")
 	}
 
 	_ = s.logs.Create(ctx, &integration.WebhookDeliveryLog{
