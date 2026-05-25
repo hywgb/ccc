@@ -452,13 +452,15 @@ func (s *Service) TransitionCallToQueue(ctx context.Context, callID, skillGroupI
 		return nil, err
 	}
 	if s.queueSnapshotRepo != nil {
-		_ = s.queueSnapshotRepo.Create(ctx, &call.QueueSnapshot{
+		if err := s.queueSnapshotRepo.Create(ctx, &call.QueueSnapshot{
 			ID:           snowflake.NextID(),
 			TenantID:     c.TenantID,
 			SkillGroupID: skillGroupID,
 			WaitingCount: 1,
 			SnapshotAt:   time.Now(),
-		})
+		}); err != nil {
+			s.logger.Warn().Err(err).Int64("call_id", c.ID).Msg("failed to create queue snapshot")
+		}
 	}
 	if s.notifier != nil && c.AgentUserID != nil {
 		s.notifier.NotifyAgent(*c.AgentUserID, "call.queued", c.ID, c)
