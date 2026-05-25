@@ -344,9 +344,8 @@ func (s *Service) AnswerCall(ctx context.Context, callID int64, agentUserID int6
 		s.notifier.NotifyAgent(agentUserID, "call.answered", c.ID, c)
 	}
 
-	// Screen pop for inbound calls
 	var popData *screenpop.ScreenPopData
-	if s.screenPop != nil && c.Direction == call.DirectionInbound {
+	if s.screenPop != nil {
 		popData, _ = s.screenPop.BuildScreenPop(ctx, c.TenantID, screenpop.CallInfo{
 			CallID:      c.ID,
 			Caller:      c.Caller,

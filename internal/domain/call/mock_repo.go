@@ -136,6 +136,10 @@ func (r *MockCallRepo) CountTodayByTenant(_ context.Context, tenantID int64) (to
 	return
 }
 
+func (r *MockCallRepo) SLATodayByTenant(_ context.Context, _ int64) (avgWaitSec float64, answeredWithin20s int, totalOffered int, longestWaitSec int, err error) {
+	return 0, 0, 0, 0, nil
+}
+
 type MockCallEventRepo struct {
 	mu     sync.RWMutex
 	events []*CallEvent
